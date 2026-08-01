@@ -6,13 +6,17 @@
 
 use std::process::{Command, ExitCode};
 
+/// The hooks this repository tracks, which git has to be pointed at.
+const HOOKS: &str = ".githooks";
+
 fn help() {
     eprintln!(
         "cargo xtask <task>
 
   lint       fmt, then clippy over every feature, and the docs
   test       the suites and the doctests
-  check      lint then test, which between them are what CI runs"
+  check      lint then test, which between them are what CI runs
+  hooks      run check before every commit, too (once per clone)"
     );
 }
 
@@ -24,6 +28,7 @@ fn main() -> ExitCode {
         "lint" => lint(),
         "test" => test(),
         "check" => lint() && test(),
+        "hooks" => hooks(),
 
         _ => {
             help();
@@ -52,6 +57,16 @@ fn lint() -> bool {
 fn test() -> bool {
     cargo(&["test", "--workspace", "--all-targets"])
         && cargo(&["test", "--workspace", "--all-targets", "--all-features"])
+}
+
+/// Points git at the hooks this repository tracks.
+///
+/// Git only ever looks in `.git/hooks`, which nothing can track, so a hook
+/// committed to a repository is a hook nobody runs until somebody says this.
+/// The hook itself is one line: `cargo xtask check`, the same gate CI names
+/// and the same one you type, rather than a third copy that can drift.
+fn hooks() -> bool {
+    run("git", &["config", "core.hooksPath", HOOKS])
 }
 
 /// Runs clippy over one selection with a warning counted as a failure.
