@@ -36,6 +36,7 @@ tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 bytes = "1"
 tokio = { version = "1" }
 tower = "0.5"
+tower-http = "0.7"
 tower-layer = "0.3"
 tower-service = "0.3"
 

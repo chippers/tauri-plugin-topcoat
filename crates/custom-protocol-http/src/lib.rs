@@ -15,7 +15,7 @@
 //! operating system. No specification is written for a custom protocol
 //! handler, so the rules start from what the `probe` binary measured and aim at
 //! the layer where a standard already holds: a canonical origin an ordinary
-//! CSRF check can read.
+//! CSRF check can read, redirect following taken from `tower-http`.
 //!
 //! # The two decisions
 //!
@@ -32,7 +32,9 @@
 //! # Applying them
 //!
 //! [`tower`] stacks both as middleware in front of any service, which is how a
-//! shell actually wants them.
+//! shell actually wants them, and adds the third job from the ecosystem rather
+//! than from here: no webview follows a `Location` from a custom protocol, and
+//! `tower-http` already knows how to follow one.
 //!
 //! # What it does not do
 //!
