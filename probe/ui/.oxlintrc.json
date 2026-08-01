@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+
+  // specta's output, and vite's output; we care about neither
+  "ignorePatterns": ["src/bindings.ts", "dist/"],
+
+  // `pedantic` didn't seem worth it
+  "categories": {
+    "correctness": "deny",
+    "suspicious": "deny",
+    "perf": "deny"
+  },
+
+  "rules": {
+    // every awaiting loop here is sequential on purpose; it is the measurement
+    "no-await-in-loop": "off",
+
+    // `onsuccess`/`onerror` is the IndexedDB idiom
+    "unicorn/prefer-add-event-listener": "off"
+  }
+}

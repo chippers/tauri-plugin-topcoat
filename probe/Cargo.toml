@@ -1,0 +1,30 @@
+[package]
+name = "topcoat-probe"
+description = "Conformance probe for Tauri custom protocols"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+flate2.workspace = true
+http.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+url.workspace = true
+
+# `specta` is the feature tauri-specta needs to register a command; without it
+# the command set does not compile.
+tauri = { workspace = true, features = ["specta"] }
+specta.workspace = true
+specta-typescript.workspace = true
+tauri-specta.workspace = true
+
+[lints]
+workspace = true

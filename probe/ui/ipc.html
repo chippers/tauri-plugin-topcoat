@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ipc under a policy</title>
+  </head>
+  <body>
+    <!-- Framed twice, from /ipc/{probe}/: once plain, and once served with
+         `default-src 'self'` and nothing else, which is what an application
+         that sets a policy at all would send. Tauri never sees that header to
+         amend it - tauri.conf.json sets `csp: null` - so it is the
+         framework's own, which is the case worth measuring.
+
+         The image says the document loaded, which is what separates a policy
+         that stopped `invoke` from one that stopped this document outright.
+         Relative, so it lands under whichever of the two this is. -->
+    <img src="loaded" alt="" width="1" height="1" />
+
+    <script type="module" src="/src/ipc.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,178 @@
+/* Utilities live here, not in the markup: nothing on this page is a component,
+   so there is nothing for a class list to be reused by. `source(none)` stops a
+   utilities layer growing out of whatever in `probe.ts` looks like a class. */
+@import "tailwindcss" source(none);
+
+/* The hexes are Tauri's own, from the brand guidelines. The rest is derived in
+   OKLCH: verdicts at one chroma, the orange's hue and 60 degrees either side,
+   one lightness per theme so none outweighs another. Everything here clears
+   7:1, the AAA standard those guidelines set. Blue labels structure, orange
+   marks what is happening now. */
+@theme {
+  --color-page: #0f0f0f;
+  --color-ink: #f6f6f6;
+  --color-dim: oklch(70% 0 0);
+  --color-rule: #2f2f2f;
+
+  --color-yes: oklch(72% 0.125 143);
+  --color-unknown: oklch(72% 0.125 83);
+  --color-no: oklch(72% 0.125 23);
+
+  --color-tauri-blue: #24c8db;
+  --color-tauri-orange: #ffc131;
+}
+
+/* Redefining the tokens beats doubling every rule. The brand pair cannot clear
+   7:1 on this page, so here it keeps its hue and drops until it does - the
+   orange past the verdicts, which share its hue. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --color-page: #f6f6f6;
+    --color-ink: #0f0f0f;
+    --color-dim: oklch(44% 0 0);
+    --color-rule: oklch(88% 0 0);
+
+    --color-yes: oklch(43% 0.088 143);
+    --color-unknown: oklch(43% 0.088 83);
+    --color-no: oklch(43% 0.088 23);
+
+    --color-tauri-blue: oklch(42% 0.072 207.4);
+    --color-tauri-orange: oklch(36% 0.074 83);
+  }
+}
+
+body {
+  @apply bg-page p-4 font-mono text-xs text-ink;
+}
+
+/* The title bar: what this is, and whether it is still doing it. */
+header {
+  @apply mb-3 flex items-baseline justify-between gap-8;
+
+  & h1 {
+    @apply text-sm font-semibold;
+  }
+
+  & #status {
+    @apply text-dim;
+
+    /* Still working. Gone the moment it is not, which is most of the time
+       anyone is looking, so nothing is allowed to depend on being seen here. */
+    &.running::before {
+      @apply mr-[0.5em] inline-block size-[0.55em] bg-tauri-orange;
+      content: "";
+    }
+  }
+}
+
+.pane {
+  @apply relative mb-3 border border-rule px-4 pt-4 pb-3;
+
+  & > h2 {
+    @apply absolute top-[-0.75em] left-3 bg-page px-2 text-tauri-blue;
+
+    & > span:not(:empty)::before {
+      @apply text-rule content-['·'] mx-2;
+    }
+  }
+
+  &:has(.gauges) {
+    @apply flex items-center;
+  }
+}
+
+#news {
+  @apply text-tauri-orange;
+}
+
+#tally {
+  @apply text-dim;
+}
+
+.gauges {
+  @apply mr-10 flex flex-col justify-center gap-3;
+}
+
+#clock {
+  @apply text-4xl/none tracking-tight whitespace-pre text-tauri-blue tabular-nums;
+
+  & .fine {
+    @apply text-tauri-orange;
+  }
+}
+
+#stats td {
+  @apply py-px pr-4 whitespace-pre text-dim;
+
+  &:nth-child(2) {
+    @apply pr-0 text-ink;
+  }
+}
+
+#breakdown {
+  @apply w-full;
+
+  & td {
+    @apply py-0.5 pr-6 whitespace-pre text-dim;
+
+    &:nth-child(2) {
+      @apply text-right text-ink tabular-nums;
+    }
+
+    &:last-child {
+      @apply w-full pr-0;
+    }
+  }
+}
+
+#report {
+  @apply w-full;
+
+  & th,
+  & td {
+    @apply pr-4 text-left align-top;
+
+    &:nth-child(-n + 3) {
+      @apply w-[1%] whitespace-nowrap;
+    }
+  }
+
+  & th {
+    @apply border-b border-rule font-semibold text-dim;
+  }
+
+  & tbody tr:nth-child(even) {
+    @apply bg-rule/40;
+  }
+
+  & td {
+    &.detail {
+      @apply wrap-break-word whitespace-pre-wrap text-dim;
+    }
+
+    &.expected {
+      @apply text-dim;
+
+      &.news {
+        @apply text-tauri-orange;
+      }
+    }
+
+    &.yes {
+      @apply text-yes;
+    }
+
+    &.no {
+      @apply text-no;
+    }
+
+    &.unknown {
+      @apply text-unknown;
+    }
+
+    /* not a verdict, so no chroma; the value is in the detail column */
+    &.info {
+      @apply text-dim;
+    }
+  }
+}
