@@ -1,7 +1,7 @@
 # Actions MUST be pinned to commit SHAs. Update the useful version tag next to it.
 #
-# This CI is intentionally barebones. It runs the same two tasks you do, by
-# name, so there is no second copy of the gate to keep in step.
+# This CI is intentionally barebones, and doesn't E2E test cross-platform behavior.
+# See the included probe project to see runtime behavior.
 
 name: ci
 
@@ -26,6 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Ubuntu is held at the LTS that carries `libwebkit2gtk-4.1`
         os: [ubuntu-24.04, macos-15, windows-2025]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -35,6 +36,30 @@ jobs:
           persist-credentials: false
 
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      # The probe is a proper TypeScript + Vite application, let's grab a Node ecosystem
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          package_json_file: probe/ui/package.json
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: probe/ui/pnpm-lock.yaml
+
+      # macOS and Windows ship one, Linux is currently webkit2gtk
+      - name: Install the Linux WebView
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            patchelf
 
       - name: Lint
         run: cargo xtask lint
