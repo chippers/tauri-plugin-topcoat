@@ -13,6 +13,9 @@ fn help() {
     eprintln!(
         "cargo xtask <task>
 
+  bindings   hold the probe's TypeScript to its Rust types, rewriting it if not
+  probe      run the conformance probe (--exit to quit once it reports)
+
   lint       fmt, then clippy over every feature, and the docs
   test       the suites and the doctests
   check      lint then test, which between them are what CI runs
@@ -24,7 +27,17 @@ fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let task = arguments.first().map(String::as_str).unwrap_or("help");
 
+    // Anything after the task belongs to what the task runs, not to us.
+    let rest: Vec<&str> = arguments.iter().skip(1).map(String::as_str).collect();
+
     let ok = match task {
+        // The regeneration already lives in a unit test, so this task is that
+        // test by name. Driving a task off a test is untried here; if it starts
+        // fighting the test runner, give it its own binary.
+        "bindings" => cargo(&["test", "-p", "topcoat-probe", "bindings"]),
+
+        "probe" => probe(&rest),
+
         "lint" => lint(),
         "test" => test(),
         "check" => lint() && test(),
@@ -57,6 +70,13 @@ fn lint() -> bool {
 fn test() -> bool {
     cargo(&["test", "--workspace", "--all-targets"])
         && cargo(&["test", "--workspace", "--all-targets", "--all-features"])
+}
+
+/// Runs the conformance probe with whatever followed the task name.
+fn probe(rest: &[&str]) -> bool {
+    let mut arguments = vec!["run", "--release", "-p", "topcoat-probe", "--"];
+    arguments.extend_from_slice(rest);
+    cargo(&arguments)
 }
 
 /// Points git at the hooks this repository tracks.
