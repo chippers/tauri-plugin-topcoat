@@ -1,0 +1,16 @@
+[package]
+name = "xtask"
+description = "CLI entrance for the repo"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+# dependencies must really earn their place; optimizing heavily for compile-time speed here
+[dependencies]
+
+[lints]
+workspace = true

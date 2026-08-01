@@ -1,0 +1,3 @@
+[alias]
+# prevent xtask from rewriting stale lockfiles
+xtask = "run --locked --profile xtask --package xtask --"
