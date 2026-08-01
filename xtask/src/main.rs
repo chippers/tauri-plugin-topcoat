@@ -14,6 +14,13 @@ const HOOKS: &str = ".githooks";
 /// is only where the type-checker runs from.
 const UI: &str = "probe/ui";
 
+/// The feature selections that neither workspace-wide clippy run reaches.
+///
+/// Those two runs are all-default and all-features, so between them they never
+/// build a default feature switched off. Which leaves `custom-protocol-http`
+/// never seen without `tower`.
+const FEATURES: &[&[&str]] = &[&["-p", "custom-protocol-http", "--no-default-features"]];
+
 fn help() {
     eprintln!(
         "cargo xtask <task>
@@ -75,6 +82,11 @@ fn lint() -> bool {
         && pnpm(UI, &["run", "fmt:check"])
         && pnpm(UI, &["run", "lint"])
         && lint_with(&["--workspace", "--all-targets", "--all-features"])
+        && FEATURES.iter().all(|selection| {
+            let mut arguments = vec!["--all-targets"];
+            arguments.extend_from_slice(selection);
+            lint_with(&arguments)
+        })
         && cargo(&["doc", "--workspace", "--no-deps", "--all-features"])
 }
 

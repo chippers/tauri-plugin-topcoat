@@ -9,9 +9,21 @@ repository.workspace = true
 authors.workspace = true
 publish = false
 
+[features]
+default = ["tower"]
+tower = ["dep:tower-layer", "dep:tower-service"]
+
 [dependencies]
 http.workspace = true
 mime.workspace = true
+tower-layer = { workspace = true, optional = true }
+tower-service = { workspace = true, optional = true }
+
+[dev-dependencies]
+bytes.workspace = true
+http-body-util.workspace = true
+tokio = { workspace = true, features = ["macros", "rt"] }
+tower = { workspace = true, features = ["util"] }
 
 [lints.rust]
 unsafe_code = "forbid"

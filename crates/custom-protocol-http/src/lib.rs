@@ -1,3 +1,4 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![forbid(unsafe_code)]
 
 //! HTTP semantics for a webview custom protocol.
@@ -28,6 +29,11 @@
 //! shell can fail where a developer will see it rather than drop half a response
 //! in silence.
 //!
+//! # Applying them
+//!
+//! [`tower`] stacks both as middleware in front of any service, which is how a
+//! shell actually wants them.
+//!
 //! # What it does not do
 //!
 //! It attaches no credential - no cookie jar, no token - and strips what a
@@ -55,6 +61,8 @@
 //! [origin]: https://url.spec.whatwg.org/#concept-url-origin
 
 mod origin;
+#[cfg(feature = "tower")]
+pub mod tower;
 mod unsupported;
 
 pub use origin::{CanonicalRequest, Denial, Origin, OriginError, Origins, Outcome, Platform};
@@ -66,4 +74,13 @@ const _: () = {
     assert_send_sync::<Origin>();
     assert_send_sync::<Denial>();
     assert_send_sync::<Unsupported>();
+
+    // A layer is built once and shared, so the same promise holds for it. The
+    // failure this catches is remote: a non-`Send` field added here surfaces as
+    // an unsatisfied bound wherever somebody spawns the stack.
+    #[cfg(feature = "tower")]
+    {
+        assert_send_sync::<tower::CanonicalOriginLayer>();
+        assert_send_sync::<tower::RefuseUnsupportedLayer>();
+    }
 };
