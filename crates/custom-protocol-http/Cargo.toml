@@ -1,0 +1,33 @@
+[package]
+name = "custom-protocol-http"
+description = "HTTP semantics for a webview custom protocol: one canonical origin, whatever shape the platform gave it"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+http.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+missing_docs = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+unwrap_used = "deny"
+await_holding_lock = "deny"
+indexing_slicing = "deny"
+panic = "deny"
+
+# we have a stricter set than the workspace, but mirror the rustdoc lint
+[lints.rustdoc]
+all = { level = "deny", priority = -1 }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

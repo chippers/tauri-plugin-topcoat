@@ -1,5 +1,10 @@
-# the workspace denies `unwrap_used`, but relax that in tests
+# `custom-protocol-http` is sensitive to panics, but relax that in tests
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 allow-panic-in-tests = true
 allow-indexing-slicing-in-tests = true
+
+# Products and protocols this crate names constantly. Without these
+# `doc_markdown` wraps them in backticks, which renders a proper noun as though
+# it were an identifier in this codebase. `..` keeps clippy's own list.
+doc-valid-idents = ["WebKit", "WKWebView", "WebKitGTK", "WebView2", "WebSockets", ".."]
