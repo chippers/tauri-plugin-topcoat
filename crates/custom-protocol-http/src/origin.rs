@@ -14,7 +14,7 @@
 //! machine, so a canonical URL that escapes into a real fetch fails closed
 //! instead of reaching a host somebody registered.
 
-use http::{Request, Uri, uri};
+use http::{HeaderMap, HeaderName, HeaderValue, Request, Uri, header, uri};
 
 /// The URL shape a webview gives a custom protocol.
 ///
@@ -194,6 +194,10 @@ impl core::error::Error for Denial {}
 pub struct Origins {
     canonical: Origin,
     platform: Origin,
+    /// The `Host` every admitted request leaves with, built once.
+    host: HeaderValue,
+    /// The canonical origin as an `Origin` header, likewise.
+    origin: HeaderValue,
 }
 
 impl Origins {
@@ -220,14 +224,16 @@ impl Origins {
         let scheme = uri::Scheme::try_from(scheme.to_ascii_lowercase().as_str()).ok()?;
         let host = uri::Authority::try_from(format!("{scheme}.{LOCALHOST}").as_str()).ok()?;
 
-        let canonical = Origin::new(uri::Scheme::HTTPS, host);
+        let canonical = Origin::new(uri::Scheme::HTTPS, host.clone());
         let platform = match platform {
             Platform::Scheme => Origin::new(scheme, uri::Authority::from_static(LOCALHOST)),
-            Platform::HttpSubdomain => Origin::new(uri::Scheme::HTTP, canonical.authority.clone()),
+            Platform::HttpSubdomain => Origin::new(uri::Scheme::HTTP, host.clone()),
             Platform::HttpsSubdomain => canonical.clone(),
         };
 
         Some(Origins {
+            host: HeaderValue::try_from(host.as_str()).ok()?,
+            origin: HeaderValue::try_from(canonical.to_string()).ok()?,
             canonical,
             platform,
         })
@@ -262,6 +268,18 @@ impl Origins {
     /// else's origin is refused, and everything else is rewritten. Deciding
     /// whether a request may *act* is the server's job, and this crate attaches
     /// no credential that would undermine the answer.
+    ///
+    /// `Origin` and `Referer` are moved onto the canonical origin only when
+    /// they were ours to begin with. A foreign value passes through untouched,
+    /// so a server running its own origin checks still sees a stranger as a
+    /// stranger.
+    ///
+    /// `Host` is set, because no webview reliably sends one and a server
+    /// comparing `Origin` against it needs both. `Accept-Encoding` is dropped,
+    /// because nothing here is on a wire and WKWebView will not decode what it
+    /// is handed anyway. Hop-by-hop headers
+    /// go too, including the ones a `Connection` names - except `Host`,
+    /// `Origin` and `Referer`, which a client does not get to delete.
     pub fn accept<B>(&self, mut request: Request<B>) -> Outcome<B> {
         if let Err(denial) = self.check_authority(request.uri()) {
             return Outcome::Deny(denial);
@@ -277,6 +295,7 @@ impl Origins {
         };
         *request.uri_mut() = rewritten;
 
+        self.rewrite_headers(request.headers_mut());
         Outcome::Serve(CanonicalRequest { request })
     }
 
@@ -298,10 +317,91 @@ impl Origins {
             })
         }
     }
+
+    fn rewrite_headers(&self, headers: &mut HeaderMap) {
+        headers.insert(header::HOST, self.host.clone());
+
+        // An `Origin` carries no path, so ours is replaced outright where a
+        // `Referer` has to be rebuilt around one.
+        if self.is_ours(headers.get(header::ORIGIN)) {
+            headers.insert(header::ORIGIN, self.origin.clone());
+        }
+        if let Some(rebased) = self.rebase(headers.get(header::REFERER)) {
+            headers.insert(header::REFERER, rebased);
+        }
+
+        headers.remove(header::ACCEPT_ENCODING);
+        for name in AMBIENT_AUTHORITY {
+            headers.remove(name);
+        }
+        remove_hop_by_hop(headers);
+    }
+
+    /// Whether a header value is a URL on the origin the webview speaks.
+    fn is_ours(&self, value: Option<&HeaderValue>) -> bool {
+        value
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|url| self.platform.covers(url))
+    }
+
+    /// Moves a URL from the platform origin onto the canonical one, or [`None`]
+    /// if it was never ours to move.
+    fn rebase(&self, value: Option<&HeaderValue>) -> Option<HeaderValue> {
+        let url: Uri = value?.to_str().ok()?.parse().ok()?;
+        if !self.platform.holds(&url) {
+            return None;
+        }
+        let rebased = self.canonical.join(url.path_and_query()?.clone()).ok()?;
+        HeaderValue::try_from(rebased.to_string()).ok()
+    }
 }
 
 /// The host reserved by RFC 6761, which every origin here is under.
 const LOCALHOST: &str = "localhost";
+
+/// Credentials a client attaches by itself, without the document asking.
+///
+/// `Authorization` is deliberately not here: a document sets it explicitly and
+/// a cross-origin attacker cannot, so it is the one credential CSRF already
+/// cannot forge.
+const AMBIENT_AUTHORITY: &[HeaderName] = &[header::COOKIE];
+
+/// Headers that describe a connection rather than a message. A custom protocol
+/// has no connection to describe.
+const HOP_BY_HOP: &[HeaderName] = &[
+    header::CONNECTION,
+    header::PROXY_AUTHENTICATE,
+    header::PROXY_AUTHORIZATION,
+    header::TE,
+    header::TRAILER,
+    header::TRANSFER_ENCODING,
+    header::UPGRADE,
+];
+
+/// Headers a `Connection` may not name away.
+///
+/// Dropping one is normally fail-safe; for these three it is the opposite,
+/// since a request arriving with no `Origin` is one a server passes.
+const DECIDES_ADMISSION: &[HeaderName] = &[header::HOST, header::ORIGIN, header::REFERER];
+
+/// Removes the headers that describe a connection rather than a message.
+///
+/// `Connection` names further ones - RFC 7230 6.1 - so what it names goes with
+/// it, less anything in [`DECIDES_ADMISSION`].
+fn remove_hop_by_hop(headers: &mut HeaderMap) {
+    let named: Vec<HeaderName> = headers
+        .get_all(header::CONNECTION)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .filter_map(|token| HeaderName::try_from(token.trim()).ok())
+        .filter(|name| !DECIDES_ADMISSION.contains(name))
+        .collect();
+
+    for name in named.iter().chain(HOP_BY_HOP) {
+        headers.remove(name);
+    }
+}
 
 /// A request that has been admitted and rewritten into the canonical origin.
 ///
@@ -355,6 +455,8 @@ fn is_usable_scheme(scheme: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use http::Method;
+
     use super::*;
 
     fn origins(platform: Platform) -> Origins {
@@ -474,6 +576,190 @@ mod tests {
     fn a_relative_request_is_ours_by_construction() {
         let outcome = origins(Platform::Scheme).accept(get("/a/b"));
         assert!(matches!(outcome, Outcome::Serve(_)), "{outcome:?}");
+    }
+
+    #[test]
+    fn host_is_supplied_because_no_webview_reliably_sends_one() {
+        let Outcome::Serve(request) = origins(Platform::Scheme).accept(get("topcoat://localhost/"))
+        else {
+            panic!("a GET from our own origin should be served");
+        };
+        assert_eq!(
+            request
+                .get_ref()
+                .headers()
+                .get(header::HOST)
+                .map(|h| h.to_str().unwrap_or_default()),
+            Some("topcoat.localhost")
+        );
+    }
+
+    #[test]
+    fn our_own_origin_and_referer_are_rebased() {
+        let request = Request::builder()
+            .uri("topcoat://localhost/submit")
+            .method(Method::POST)
+            .header(header::ORIGIN, "topcoat://localhost")
+            .header(header::REFERER, "topcoat://localhost/form?x=1")
+            .body(())
+            .expect("a valid request");
+        let Outcome::Serve(request) = origins(Platform::Scheme).accept(request) else {
+            panic!("a POST from our own origin should be served");
+        };
+        let headers = request.get_ref().headers();
+        assert_eq!(
+            headers.get(header::ORIGIN).and_then(|h| h.to_str().ok()),
+            Some("https://topcoat.localhost")
+        );
+        assert_eq!(
+            headers.get(header::REFERER).and_then(|h| h.to_str().ok()),
+            Some("https://topcoat.localhost/form?x=1")
+        );
+    }
+
+    /// An `Origin` is an origin and a `Referer` is a URL, so only one of them
+    /// comes back with a path.
+    #[test]
+    fn a_rebased_referer_is_a_url_and_a_rebased_origin_is_not() {
+        let request = Request::builder()
+            .uri("topcoat://localhost/submit")
+            .method(Method::POST)
+            .header(header::ORIGIN, "topcoat://localhost")
+            .header(header::REFERER, "topcoat://localhost")
+            .body(())
+            .expect("a valid request");
+        let Outcome::Serve(request) = origins(Platform::Scheme).accept(request) else {
+            panic!("a POST from our own origin should be served");
+        };
+        let headers = request.get_ref().headers();
+        assert_eq!(
+            headers.get(header::ORIGIN),
+            Some(&HeaderValue::from_static("https://topcoat.localhost"))
+        );
+        assert_eq!(
+            headers.get(header::REFERER),
+            Some(&HeaderValue::from_static("https://topcoat.localhost/")),
+            "a URL with an empty path is spelled with the slash"
+        );
+    }
+
+    #[test]
+    fn a_foreign_origin_is_left_alone_rather_than_laundered() {
+        let request = Request::builder()
+            .uri("topcoat://localhost/read")
+            .header(header::ORIGIN, "https://evil.example")
+            .body(())
+            .expect("a valid request");
+        let Outcome::Serve(request) = origins(Platform::Scheme).accept(request) else {
+            panic!("a GET is always served");
+        };
+        assert_eq!(
+            request
+                .get_ref()
+                .headers()
+                .get(header::ORIGIN)
+                .and_then(|h| h.to_str().ok()),
+            Some("https://evil.example")
+        );
+    }
+
+    #[test]
+    fn accept_encoding_and_hop_by_hop_headers_are_dropped() {
+        let request = Request::builder()
+            .uri("topcoat://localhost/")
+            .header(header::ACCEPT_ENCODING, "gzip, br")
+            .header(header::CONNECTION, "keep-alive")
+            .header(header::TRANSFER_ENCODING, "chunked")
+            .body(())
+            .expect("a valid request");
+        let Outcome::Serve(request) = origins(Platform::Scheme).accept(request) else {
+            panic!("a GET is always served");
+        };
+        let headers = request.get_ref().headers();
+        assert!(headers.get(header::ACCEPT_ENCODING).is_none());
+        assert!(headers.get(header::CONNECTION).is_none());
+        assert!(headers.get(header::TRANSFER_ENCODING).is_none());
+    }
+
+    /// RFC 7230 6.1: a `Connection` names further headers as this hop's only.
+    #[test]
+    fn a_header_connection_names_goes_with_it() {
+        let request = Request::builder()
+            .uri("topcoat://localhost/")
+            .header(header::CONNECTION, "keep-alive, X-Internal-Trace")
+            .header("x-internal-trace", "abc123")
+            .header("x-end-to-end", "kept")
+            .body(())
+            .expect("a valid request");
+        let Outcome::Serve(request) = origins(Platform::Scheme).accept(request) else {
+            panic!("a GET is always served");
+        };
+        let headers = request.get_ref().headers();
+        assert!(headers.get("x-internal-trace").is_none());
+        assert!(headers.get(header::CONNECTION).is_none());
+        assert!(headers.get("x-end-to-end").is_some(), "took an unnamed one");
+    }
+
+    /// The one a client would reach for.
+    ///
+    /// Stripping `Origin` is fail-open - a request carrying none is one a
+    /// server passes - so it is not on offer.
+    #[test]
+    fn a_connection_cannot_name_away_the_evidence_against_it() {
+        let request = Request::builder()
+            .uri("topcoat://localhost/submit")
+            .method(Method::POST)
+            .header(header::CONNECTION, "origin, referer, host")
+            .header(header::ORIGIN, "https://evil.example")
+            .body(())
+            .expect("a valid request");
+        let Outcome::Serve(request) = origins(Platform::Scheme).accept(request) else {
+            panic!("a POST is served; whether it may act is the server's call");
+        };
+        let headers = request.get_ref().headers();
+        assert_eq!(
+            headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()),
+            Some("https://evil.example"),
+            "a stranger deleted its own `Origin` and arrived looking local"
+        );
+        assert!(headers.get(header::HOST).is_some(), "nothing to compare to");
+    }
+
+    #[test]
+    fn an_inbound_cookie_never_reaches_the_server() {
+        let request = Request::builder()
+            .uri("topcoat://localhost/")
+            .header(header::COOKIE, "__Host-session=t0ken; other=1")
+            .body(())
+            .expect("a valid request");
+        let Outcome::Serve(request) = origins(Platform::Scheme).accept(request) else {
+            panic!("a GET is always served");
+        };
+        assert!(
+            request.get_ref().headers().get(header::COOKIE).is_none(),
+            "a credential arrived with neither `Origin` nor `Sec-Fetch-Site` to vouch for it"
+        );
+    }
+
+    #[test]
+    fn an_authorization_header_is_left_for_the_application() {
+        let request = Request::builder()
+            .uri("topcoat://localhost/")
+            .header(header::AUTHORIZATION, "Bearer t0ken")
+            .body(())
+            .expect("a valid request");
+        let Outcome::Serve(request) = origins(Platform::Scheme).accept(request) else {
+            panic!("a GET is always served");
+        };
+        assert_eq!(
+            request
+                .get_ref()
+                .headers()
+                .get(header::AUTHORIZATION)
+                .and_then(|value| value.to_str().ok()),
+            Some("Bearer t0ken"),
+            "an explicit credential is not ambient and is not ours to drop"
+        );
     }
 
     #[test]

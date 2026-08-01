@@ -25,10 +25,12 @@
 //!
 //! # What it does not do
 //!
-//! It attaches no credential - no cookie jar, no token - so a server may still
-//! reason that a request with neither `Origin` nor `Sec-Fetch-Site` has no
-//! ambient authority to forge with. Supply one here and that reasoning is
-//! false; ambient authority belongs to the shell, per webview, or to nobody.
+//! It attaches no credential - no cookie jar, no token - and strips what a
+//! client attached by itself, so a server may still reason that a request with
+//! neither `Origin` nor `Sec-Fetch-Site` has no ambient authority to forge
+//! with. Supply one here and that reasoning is false; ambient authority belongs
+//! to the shell, per webview, or to nobody. `Host` is the exception, and is set
+//! because a server comparing `Origin` against it needs both.
 //!
 //! # Why `Sec-Fetch-Site` is never there
 //!
