@@ -25,6 +25,7 @@ bytes.workspace = true
 http-body-util.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
 tower = { workspace = true, features = ["util"] }
+tower-http = { workspace = true, features = ["csrf"] }
 
 [lints.rust]
 unsafe_code = "forbid"

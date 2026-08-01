@@ -18,6 +18,12 @@
 //! Outermost first, and it matters. The origin rewrite runs before anything
 //! else, because every layer under it gets to assume one canonical origin.
 //!
+//! An ordinary CSRF check compares `Origin` against `Host`, and some refuse a
+//! scheme that is not `http` or `https` outright. Either way the two headers
+//! have to move together, or the application's own form post is refused. That
+//! is what makes the rewrite the outermost layer, and
+//! `a_csrf_check_needs_the_rewrite_underneath_it` holds it there.
+//!
 //! [`RefuseUnsupportedLayer`] goes **under** the redirect follower. Over it,
 //! the check only ever sees the response that survives the last hop, and a
 //! `Set-Cookie` on a hop that itself redirects is exactly how a login answers a
@@ -410,6 +416,98 @@ mod tests {
             seen.lock().expect("not poisoned").len(),
             1,
             "the redirect was followed past the cookie"
+        );
+    }
+
+    /// The middleware stands in for any check written against the ordinary web.
+    /// Nothing in this crate depends on it.
+    #[tokio::test]
+    async fn a_csrf_check_needs_the_rewrite_underneath_it() {
+        use tower_http::csrf::CsrfLayer;
+
+        async fn form_post(origin: &str, host: &str) -> StatusCode {
+            let service = ServiceBuilder::new()
+                .layer(CsrfLayer::new())
+                .service(service_fn(|_: Request<ReqBody>| async {
+                    Ok::<_, std::convert::Infallible>(ok())
+                }));
+            let request = Request::builder()
+                .method(Method::POST)
+                .uri("/todos")
+                .header(header::ORIGIN, origin)
+                .header(header::HOST, host)
+                .body(Full::new(Bytes::from_static(b"title=milk")))
+                .expect("a valid request");
+            service
+                .oneshot(request)
+                .await
+                .expect("the inner service is infallible")
+                .status()
+        }
+
+        assert_eq!(
+            form_post("topcoat://localhost", "localhost").await,
+            StatusCode::FORBIDDEN,
+            "a custom scheme is unreadable to an ordinary origin check, so this \
+             is what the application's own form post would get above the rewrite"
+        );
+        assert_eq!(
+            form_post("https://topcoat.localhost", "topcoat.localhost").await,
+            StatusCode::OK,
+            "the same request, rewritten, is the one the check was written for"
+        );
+        assert_eq!(
+            form_post("https://evil.example", "topcoat.localhost").await,
+            StatusCode::FORBIDDEN,
+            "the rewrite must not launder a foreign origin into a passing one"
+        );
+    }
+
+    /// Process-side state only whatever handed the request in could have set.
+    #[derive(Clone, Copy)]
+    struct ShellMarker;
+
+    /// 0.6 dropped extensions on every hop and 0.7 forwards them, silently
+    /// changing what a shell beneath this stack sees. Where an upgrade that
+    /// unpins it fails.
+    #[tokio::test]
+    async fn a_redirected_request_inherits_no_extensions() {
+        let seen: Arc<Mutex<Vec<bool>>> = Arc::new(Mutex::new(Vec::new()));
+        let recorded = Arc::clone(&seen);
+        let hops = Arc::new(Mutex::new(vec![
+            redirect(StatusCode::SEE_OTHER, "/landed"),
+            ok(),
+        ]));
+        let inner = service_fn(move |request: Request<ReqBody>| {
+            let recorded = Arc::clone(&recorded);
+            let hops = Arc::clone(&hops);
+            async move {
+                recorded
+                    .lock()
+                    .expect("not poisoned")
+                    .push(request.extensions().get::<ShellMarker>().is_some());
+                let mut hops = hops.lock().expect("not poisoned");
+                let response = if hops.len() > 1 {
+                    hops.remove(0)
+                } else {
+                    hops.first().cloned().unwrap_or_else(ok)
+                };
+                Ok::<_, std::convert::Infallible>(response)
+            }
+        });
+        let service = ServiceBuilder::new()
+            .layer(CanonicalOriginLayer::new(origins()))
+            .layer(follow_redirects::<ReqBody, std::convert::Infallible>())
+            .service(inner);
+
+        let mut request = request(Method::POST, "topcoat://localhost/sign-in");
+        request.extensions_mut().insert(ShellMarker);
+        let _ = service.oneshot(request).await.expect("infallible");
+
+        assert_eq!(
+            seen.lock().expect("not poisoned").as_slice(),
+            [true, false],
+            "the shell's own state was replayed onto a request the application asked for"
         );
     }
 
