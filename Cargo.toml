@@ -1,0 +1,41 @@
+[workspace]
+resolver = "3"
+members = ["xtask"]
+
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/chippers/tauri-plugin-topcoat"
+authors = ["Chip Reed"]
+
+# the floor every crate here is held to
+rust-version = "1.95"
+
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+# useful for proof-of-concepts
+missing_debug_implementations = "warn"
+unused_qualifications = "warn"
+
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+await_holding_lock = "deny"
+
+
+# documentation is output, keep them high quality
+[workspace.lints.rustdoc]
+all = { level = "deny", priority = -1 }
+
+
+# fast, separate xtask profile
+[profile.xtask]
+inherits = "dev"
+debug = false
+debug-assertions = false
+overflow-checks = false
+panic = "abort"
