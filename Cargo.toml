@@ -22,6 +22,7 @@ url = "2"
 
 # hyper
 http = "1"
+mime = "0.3"
 
 # tauri + specta (keep in lockstep during rc)
 tauri = "2.11"

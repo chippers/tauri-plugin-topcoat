@@ -16,12 +16,17 @@
 //! the layer where a standard already holds: a canonical origin an ordinary
 //! CSRF check can read.
 //!
-//! # The decision
+//! # The two decisions
 //!
 //! [`Origins`] turns a request the webview delivered into one the server may
 //! serve: refusing any URL that names somebody else's origin, and rewriting the
 //! rest into the single canonical origin the server sees on every platform.
 //! [`Platform`] is the only place in the crate that names an operating system.
+//!
+//! [`unsupported`] reads the answer back, and names the capabilities a protocol
+//! handler cannot deliver - streaming, compression, cookies, upgrades - so the
+//! shell can fail where a developer will see it rather than drop half a response
+//! in silence.
 //!
 //! # What it does not do
 //!
@@ -50,12 +55,15 @@
 //! [origin]: https://url.spec.whatwg.org/#concept-url-origin
 
 mod origin;
+mod unsupported;
 
 pub use origin::{CanonicalRequest, Denial, Origin, OriginError, Origins, Outcome, Platform};
+pub use unsupported::{Unsupported, unsupported};
 
 const _: () = {
     const fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<Origins>();
     assert_send_sync::<Origin>();
     assert_send_sync::<Denial>();
+    assert_send_sync::<Unsupported>();
 };

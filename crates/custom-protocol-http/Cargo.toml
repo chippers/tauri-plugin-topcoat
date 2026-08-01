@@ -1,6 +1,6 @@
 [package]
 name = "custom-protocol-http"
-description = "HTTP semantics for a webview custom protocol: one canonical origin, whatever shape the platform gave it"
+description = "HTTP semantics for a webview custom protocol: one canonical origin, and what the transport cannot carry"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,6 +11,7 @@ publish = false
 
 [dependencies]
 http.workspace = true
+mime.workspace = true
 
 [lints.rust]
 unsafe_code = "forbid"
