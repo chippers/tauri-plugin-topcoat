@@ -42,6 +42,10 @@ impl Bridge {
         }
     }
 
+    pub(crate) const fn origins(&self) -> &Origins {
+        &self.origins
+    }
+
     /// Serves one request from the webview.
     ///
     /// The stack is assembled per request rather than held, because the webview

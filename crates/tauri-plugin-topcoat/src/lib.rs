@@ -61,7 +61,7 @@ use std::{borrow::Cow, sync::Arc, sync::OnceLock};
 
 use custom_protocol_http::Origins;
 use protocol::Bridge;
-use tauri::{AppHandle, Runtime, plugin::TauriPlugin};
+use tauri::{AppHandle, Runtime, Url, Webview, plugin::TauriPlugin};
 use topcoat::{context::BaseUrl, router::RouterBuilder};
 
 pub use custom_protocol_http::{Origin, OriginError, Platform};
@@ -111,6 +111,7 @@ pub struct Builder {
     /// `None` reads the webview's own `useHttpsScheme` from the application
     /// configuration, so the two cannot disagree.
     https_scheme: Option<bool>,
+    allow_external_navigation: bool,
 }
 
 impl core::fmt::Debug for Builder {
@@ -120,6 +121,7 @@ impl core::fmt::Debug for Builder {
         f.debug_struct("Builder")
             .field("scheme", &self.scheme)
             .field("https_scheme", &self.https_scheme)
+            .field("allow_external_navigation", &self.allow_external_navigation)
             .finish_non_exhaustive()
     }
 }
@@ -132,6 +134,7 @@ impl Builder {
             router,
             scheme: DEFAULT_SCHEME.to_owned(),
             https_scheme: None,
+            allow_external_navigation: false,
         }
     }
 
@@ -159,6 +162,18 @@ impl Builder {
         self
     }
 
+    /// Lets a webview showing this application navigate to another origin.
+    ///
+    /// Off by default. A desktop application usually wants an external link
+    /// opened in the user's browser rather than replacing its own UI, and a
+    /// webview that cannot reach another origin cannot host content that would
+    /// try to forge requests against this one.
+    #[must_use]
+    pub const fn allow_external_navigation(mut self, allow: bool) -> Builder {
+        self.allow_external_navigation = allow;
+        self
+    }
+
     /// Builds the plugin.
     ///
     /// # Errors
@@ -174,12 +189,15 @@ impl Builder {
         let bridge: Arc<OnceLock<Bridge>> = Arc::new(OnceLock::new());
         let building = Arc::clone(&bridge);
         let serving = Arc::clone(&bridge);
+        let navigating = Arc::clone(&bridge);
 
         let Builder {
             router,
             scheme,
             https_scheme,
+            allow_external_navigation,
         } = self;
+        let confined = !allow_external_navigation;
         let protocol_scheme = scheme.clone();
 
         Ok(tauri::plugin::Builder::new("topcoat")
@@ -200,6 +218,7 @@ impl Builder {
                     });
                 },
             )
+            .on_navigation(move |webview, url| may_navigate(&navigating, webview, url, confined))
             .build())
     }
 
@@ -276,6 +295,41 @@ impl Session {
     ) -> http::Response<Cow<'static, [u8]>> {
         self.0.serve(request).await
     }
+}
+
+/// Decides whether a webview may go where it is going.
+///
+/// Narrow on purpose. Only a webview already showing one of our pages is held
+/// to confinement; every other webview in the application is none of this
+/// plugin's business, and neither is the first navigation into one.
+fn may_navigate<R: Runtime>(
+    bridge: &OnceLock<Bridge>,
+    webview: &Webview<R>,
+    url: &Url,
+    confined: bool,
+) -> bool {
+    let Some(bridge) = bridge.get() else {
+        return true;
+    };
+    let ours = bridge.origins().platform();
+
+    let Ok(current) = webview.url() else {
+        return true;
+    };
+    if !confined || !ours.covers(current.as_str()) {
+        return true;
+    }
+
+    let target_is_ours = ours.covers(url.as_str());
+    if !target_is_ours {
+        // Loud without any feature turned on: a window that silently refuses to
+        // navigate is the one failure where saying nothing misleads.
+        eprintln!(
+            "tauri-plugin-topcoat: blocked navigation to {url} in webview {}",
+            webview.label()
+        );
+    }
+    target_is_ours
 }
 
 /// The URL shape this build's webview uses, from the application configuration
