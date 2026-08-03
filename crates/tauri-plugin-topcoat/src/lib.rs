@@ -460,3 +460,162 @@ fn observe<R: Runtime>(
     }
     target_is_ours
 }
+
+/// What installing the session transport does to a response, driven through the
+/// [`Builder`] an application uses rather than a parallel assembly of one.
+#[cfg(all(test, feature = "session"))]
+mod session_tests {
+    use topcoat::{
+        context::Cx,
+        router::{Body, IntoResponse, Path, RouteFn, RouteFuture, Router},
+        session::{SessionConfig, start, token_hash},
+    };
+
+    use super::*;
+
+    /// Mints a session the way an application's sign-in route does.
+    fn sign_in(cx: &Cx, _body: Body) -> RouteFuture<'_> {
+        Box::pin(async move {
+            start(cx).await?;
+            "signed in".into_response(cx)
+        })
+    }
+
+    /// Reports whether this request arrived carrying a live session.
+    fn whoami(cx: &Cx, _body: Body) -> RouteFuture<'_> {
+        Box::pin(async move {
+            let who = match token_hash(cx).await? {
+                Some(_) => "known",
+                None => "anonymous",
+            };
+            who.into_response(cx)
+        })
+    }
+
+    fn session() -> Session {
+        let router = Router::builder()
+            .route(RouteFn::new(
+                http::Method::POST,
+                Cow::Borrowed(Path::new("/sign-in")),
+                sign_in,
+            ))
+            .route(RouteFn::new(
+                http::Method::GET,
+                Cow::Borrowed(Path::new("/whoami")),
+                whoami,
+            ));
+        Builder::new(router)
+            .sessions(SessionConfig::builder())
+            .session(Platform::Scheme)
+            .expect("the plugin is configured correctly")
+    }
+
+    async fn serve(session: &Session, method: http::Method, path: &str) -> (u16, String) {
+        let request = http::Request::builder()
+            .method(method)
+            .uri(format!("topcoat://localhost{path}"))
+            .body(Vec::new())
+            .expect("a valid request");
+        let response = session.serve(request).await;
+        (
+            response.status().as_u16(),
+            String::from_utf8_lossy(response.body()).into_owned(),
+        )
+    }
+
+    #[tokio::test]
+    async fn signing_in_emits_no_cookie_and_is_not_refused() {
+        let session = session();
+
+        let request = http::Request::post("topcoat://localhost/sign-in")
+            .body(Vec::new())
+            .expect("a valid request");
+        let response = session.serve(request).await;
+
+        assert_eq!(
+            response.status(),
+            http::StatusCode::OK,
+            "the session transport tripped the transport's own cookie refusal: {}",
+            String::from_utf8_lossy(response.body())
+        );
+        assert!(
+            response.headers().get(http::header::SET_COOKIE).is_none(),
+            "the token was handed to a webview that would have discarded it"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_token_survives_into_the_next_request() {
+        let session = session();
+
+        let (status, _) = serve(&session, http::Method::POST, "/sign-in").await;
+        assert_eq!(status, 200);
+
+        let (status, body) = serve(&session, http::Method::GET, "/whoami").await;
+
+        assert_eq!(status, 200);
+        assert_eq!(body, "known", "the session did not outlive the request");
+    }
+
+    #[tokio::test]
+    async fn a_webview_that_never_signed_in_is_anonymous() {
+        let (status, body) = serve(&session(), http::Method::GET, "/whoami").await;
+
+        assert_eq!(status, 200);
+        assert_eq!(body, "anonymous");
+    }
+
+    /// The third case is the blind spot, asserted rather than described: a
+    /// `fetch` here carries no `Origin` and can carry no `Sec-Fetch-Site`, and
+    /// topcoat passes anything sending neither. What keeps that safe is the
+    /// stripping this transport does; what could falsify it is a webview
+    /// omitting `Origin` cross-origin, which the probe measures.
+    #[tokio::test]
+    async fn topcoats_origin_check_sees_what_it_needs_through_the_rewrite() {
+        async fn post(session: &Session, origin: Option<&str>) -> u16 {
+            let mut request = http::Request::post("topcoat://localhost/sign-in");
+            if let Some(origin) = origin {
+                request = request.header(http::header::ORIGIN, origin);
+            }
+            let request = request.body(Vec::new()).expect("a valid request");
+            session.serve(request).await.status().as_u16()
+        }
+
+        let session = session();
+
+        assert_eq!(
+            post(&session, Some("topcoat://localhost")).await,
+            200,
+            "the application's own form post was refused; the rewrite has to \
+             move `Origin` and `Host` together for the check to match them"
+        );
+        assert_eq!(
+            post(&session, Some("https://evil.example")).await,
+            403,
+            "a foreign origin was laundered into a passing one"
+        );
+        assert_eq!(
+            post(&session, None).await,
+            200,
+            "a request carrying neither `Origin` nor `Sec-Fetch-Site` passes, \
+             which over a custom protocol is every `fetch`"
+        );
+    }
+
+    #[test]
+    fn our_own_sessions_builds() {
+        Builder::new(Router::builder())
+            .sessions(SessionConfig::builder())
+            .session(Platform::Scheme)
+            .expect("the plugin installs its own token store");
+    }
+
+    /// Why the plugin does not need to detect the mistake: without topcoat's
+    /// `cookie` feature there is no default store to fall back to, so it cannot
+    /// compile its way to runtime. Enabling `topcoat/cookie` is what to avoid.
+    #[test]
+    #[should_panic(expected = "no token store configured")]
+    fn a_session_config_without_a_token_store_refuses_to_build() {
+        let _ = SessionConfig::builder().build();
+    }
+}
