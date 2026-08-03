@@ -28,6 +28,8 @@ fn help() {
   bindings   hold the probe's TypeScript to its Rust types, rewriting it if not
   probe      run the conformance probe (--exit to quit once it reports)
 
+  hello      the least that renders over the protocol
+
   lint       fmt, the page's own two, clippy over every feature, and the docs
   test       the suites, the doctests, then the page against its bindings
   check      lint then test, which between them are what CI runs
@@ -49,6 +51,8 @@ fn main() -> ExitCode {
         "bindings" => cargo(&["test", "-p", "topcoat-probe", "bindings"]),
 
         "probe" => probe(&rest),
+
+        "hello" => example("example-hello"),
 
         "lint" => lint(),
         "test" => test(),
@@ -100,6 +104,14 @@ fn test() -> bool {
         // `--all-targets` skips doctests, and the usage examples are doctests.
         && cargo(&["test", "--workspace", "--doc", "--all-features"])
         && pnpm(UI, &["run", "typecheck"])
+}
+
+/// Runs one example application.
+///
+/// Release, because these are windows somebody is going to interact with and
+/// the debug build of a webview application feels it.
+fn example(package: &str) -> bool {
+    cargo(&["run", "--release", "-p", package])
 }
 
 /// Runs the conformance probe with whatever followed the task name.
