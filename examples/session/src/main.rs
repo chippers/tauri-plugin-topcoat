@@ -15,6 +15,9 @@
 //! `__Host-` prefixed, `Secure`, `HttpOnly` cookie, WebKit throws away every
 //! cookie a custom protocol sets, and the next request arrives logged out. The
 //! plugin refuses that response with a `502` rather than let it look fine.
+//!
+//! Every decision the plugin makes prints as it happens: the origin rewrite,
+//! the redirect followed, the token handed over or withheld.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -39,6 +42,12 @@ use topcoat::{
 };
 
 fn main() {
+    // Debug, because the token handed over or withheld lives there and watching
+    // it is the point of running this.
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .init();
+
     let plugin = plugin()
         .build()
         .expect("the plugin is configured correctly");

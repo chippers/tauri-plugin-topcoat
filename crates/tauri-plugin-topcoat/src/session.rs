@@ -30,17 +30,7 @@ use topcoat::{
     session::{Token, TokenStore, TokenStoreFuture},
 };
 
-/// Which rule in [`Webviews::read`] declined.
-///
-/// An enum rather than a bare [`None`], so a new rule has to name itself before
-/// it compiles, and so a test can say which one fired.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Withheld {
-    UnknownWebview,
-    ShowingAnotherOrigin,
-    NoToken,
-    Expired,
-}
+use crate::trace::{self, Withheld};
 
 /// Which webview a request came from, carried where the webview cannot reach.
 ///
@@ -175,7 +165,17 @@ impl TokenStore for WebviewTokenStore {
     fn read<'a>(&'a self, cx: &'a Cx) -> TokenStoreFuture<'a, Option<Token>> {
         // Resolved before the future is built, so the lock is never held across
         // a yield point.
-        let token = requesting_webview(cx).and_then(|label| self.webviews.read(label, now()).ok());
+        let token =
+            requesting_webview(cx).and_then(|label| match self.webviews.read(label, now()) {
+                Ok(token) => {
+                    trace::session_presented(label);
+                    Some(token)
+                }
+                Err(withheld) => {
+                    trace::session_withheld(label, withheld);
+                    None
+                }
+            });
         Box::pin(async move { Ok(token) })
     }
 
@@ -187,6 +187,7 @@ impl TokenStore for WebviewTokenStore {
     ) -> TokenStoreFuture<'a, ()> {
         if let Some(label) = requesting_webview(cx) {
             self.webviews.write(label, token, max_age, now());
+            trace::session_issued(label);
         }
         Box::pin(async move { Ok(()) })
     }
@@ -194,6 +195,7 @@ impl TokenStore for WebviewTokenStore {
     fn delete<'a>(&'a self, cx: &'a Cx) -> TokenStoreFuture<'a, ()> {
         if let Some(label) = requesting_webview(cx) {
             self.webviews.delete(label);
+            trace::session_cleared(label);
         }
         Box::pin(async move { Ok(()) })
     }

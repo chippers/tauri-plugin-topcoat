@@ -18,9 +18,9 @@ const UI: &str = "probe/ui";
 ///
 /// Those two runs are all-default and all-features, so between them they never
 /// build a default feature switched off, nor an optional one on its own. Which
-/// leaves `custom-protocol-http` never seen without `tower`, `tracing` - which
-/// compiles to nothing when absent and to real calls when present - never
-/// type-checked on its own, and `session` never seen until something asks.
+/// leaves `custom-protocol-http` never seen without `tower`, and `tracing` -
+/// which compiles to nothing when absent and to real calls when present - never
+/// type-checked apart from `session`.
 const FEATURES: &[&[&str]] = &[
     &["-p", "custom-protocol-http", "--no-default-features"],
     &[
@@ -31,6 +31,7 @@ const FEATURES: &[&[&str]] = &[
         "tracing",
     ],
     &["-p", "tauri-plugin-topcoat", "--features", "session"],
+    &["-p", "tauri-plugin-topcoat", "--features", "tracing"],
 ];
 
 fn help() {

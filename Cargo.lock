@@ -921,6 +921,8 @@ dependencies = [
  "tauri-plugin-topcoat",
  "tokio",
  "topcoat",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -3564,6 +3566,7 @@ dependencies = [
  "tokio",
  "topcoat",
  "tower",
+ "tracing",
 ]
 
 [[package]]
