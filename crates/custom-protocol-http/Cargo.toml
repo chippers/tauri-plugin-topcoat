@@ -12,6 +12,7 @@ publish = false
 [features]
 default = ["tower"]
 tower = ["dep:tower-layer", "dep:tower-service", "dep:tower-http"]
+tracing = ["dep:tracing"]
 
 [dependencies]
 http.workspace = true
@@ -19,6 +20,7 @@ mime.workspace = true
 tower-http = { workspace = true, optional = true, features = ["follow-redirect"] }
 tower-layer = { workspace = true, optional = true }
 tower-service = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
 
 [dev-dependencies]
 bytes.workspace = true
@@ -26,6 +28,7 @@ http-body-util.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
 tower = { workspace = true, features = ["util"] }
 tower-http = { workspace = true, features = ["csrf"] }
+tracing-subscriber.workspace = true
 
 [lints.rust]
 unsafe_code = "forbid"

@@ -70,6 +70,22 @@ impl Bridge {
     ///
     /// The stack is assembled per request rather than held, because the webview
     /// it is serving is part of it. Assembly is a few `Arc` clones.
+    ///
+    /// The span carries the path and not the URI: a query string is the
+    /// application's, and a desktop application's is whatever the user typed.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(
+            name = "serve",
+            skip_all,
+            fields(
+                webview = label,
+                method = %request.method(),
+                path = request.uri().path(),
+                status = tracing::field::Empty,
+            ),
+        )
+    )]
     pub(crate) async fn serve(
         &self,
         label: &str,
@@ -94,7 +110,11 @@ impl Bridge {
         let _ = label;
 
         match service.oneshot(request).await {
-            Ok(response) => deliver(response).await,
+            Ok(response) => {
+                let response = deliver(response).await;
+                crate::trace::record_status(response.status());
+                response
+            }
             Err(infallible) => match infallible {},
         }
     }
@@ -192,6 +212,7 @@ fn harden(headers: &mut HeaderMap) {
 /// A request arrived before the plugin finished starting, which should not be
 /// reachable: a webview has to exist to make one, and `setup` runs first.
 pub(crate) fn unavailable() -> Response<Cow<'static, [u8]>> {
+    crate::trace::served_before_ready();
     status_only(
         StatusCode::SERVICE_UNAVAILABLE,
         "the topcoat plugin has not finished starting",

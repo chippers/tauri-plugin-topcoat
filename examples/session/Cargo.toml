@@ -15,7 +15,9 @@ tauri-build.workspace = true
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
 tauri.workspace = true
-tauri-plugin-topcoat = { workspace = true, features = ["session"] }
+tauri-plugin-topcoat = { workspace = true, features = ["session", "tracing"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 # No `serve`, so nothing binds a port, and no `cookie` - which is the point.
 topcoat = { workspace = true, features = ["discover", "router", "session", "view"] }

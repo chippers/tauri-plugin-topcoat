@@ -11,6 +11,9 @@ publish = false
 
 [features]
 session = ["topcoat/session"]
+# Turns on the transport's events too: half a request's story is worse than
+# none, because the missing half is the part that refused it.
+tracing = ["dep:tracing", "custom-protocol-http/tracing"]
 
 [dependencies]
 bytes.workspace = true
@@ -21,6 +24,7 @@ tauri.workspace = true
 thiserror.workspace = true
 topcoat = { workspace = true, features = ["router"] }
 custom-protocol-http = { workspace = true, features = ["tower"] }
+tracing = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }

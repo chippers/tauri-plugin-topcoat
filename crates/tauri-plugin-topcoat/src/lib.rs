@@ -55,6 +55,17 @@
 //! cookie a custom protocol sets. The `session` feature fixes that in topcoat's
 //! own `TokenStore` seam. See [`Builder::sessions`].
 //!
+//! # Tracing
+//!
+//! The `tracing` feature reports what this plugin decided, which is the part
+//! nothing else can see: a request served and how it ended, a navigation
+//! blocked, a response refused and which capability did it, a session handed
+//! over or withheld and which rule withheld it. Each request is a `serve` span
+//! naming its webview. Turning it on turns on the transport's events too.
+//!
+//! The token is never reported: no function that reports a session takes one,
+//! so it holds by signature.
+//!
 //! # Tauri commands
 //!
 //! They keep working, with nothing to configure: `invoke` needs the injected
@@ -65,6 +76,7 @@
 mod protocol;
 #[cfg(feature = "session")]
 mod session;
+mod trace;
 
 use std::{
     borrow::Cow,
@@ -448,15 +460,13 @@ fn observe<R: Runtime>(
         return true;
     };
     if !confined || !ours.covers(current.as_str()) {
+        if !target_is_ours {
+            trace::left_our_origin(webview.label(), url.as_str());
+        }
         return true;
     }
     if !target_is_ours {
-        // Loud without any feature turned on: a window that silently refuses to
-        // navigate is the one failure where saying nothing misleads.
-        eprintln!(
-            "tauri-plugin-topcoat: blocked navigation to {url} in webview {}",
-            webview.label()
-        );
+        trace::blocked_navigation(webview.label(), url.as_str());
     }
     target_is_ours
 }
