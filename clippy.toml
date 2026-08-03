@@ -1,0 +1,5 @@
+# the workspace denies `unwrap_used`, but relax that in tests
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true

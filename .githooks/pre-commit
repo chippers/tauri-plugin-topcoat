@@ -1,0 +1,10 @@
+#!/bin/sh
+# The gate, before a commit is written rather than after CI has it.
+#
+# It runs the working tree, not the index, so what it passes is what you have
+# and not what you staged. No stash dance to close that gap: a hook that
+# stashes is a hook that loses work the first time it fails partway.
+#
+# `.git/hooks` is not tracked and cannot be, so this lives here and
+# `cargo xtask hooks` is what points git at it. Once per clone.
+exec cargo xtask check
