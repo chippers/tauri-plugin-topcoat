@@ -1,0 +1,135 @@
+/* Tauri's palette; probe.css derives the rest and carries the reasoning. Blue
+   labels structure, orange marks what is happening now - on the light page
+   neither clears 7:1 as-is, so there both drop until they do. */
+:root {
+    color-scheme: dark;
+
+    --page: #0f0f0f;
+    --ink: #f6f6f6;
+    --dim: oklch(70% 0 0);
+    --rule: #2f2f2f;
+
+    --title: #24c8db;
+    --focus: #ffc131;
+
+    @media (prefers-color-scheme: light) {
+        color-scheme: light;
+
+        --page: #f6f6f6;
+        --ink: #0f0f0f;
+        --dim: oklch(44% 0 0);
+        --rule: oklch(88% 0 0);
+
+        --title: oklch(42% 0.072 207.4);
+        --focus: oklch(36% 0.074 83);
+    }
+}
+
+body {
+    background: var(--page);
+    color: var(--ink);
+    font: 15px/1.6 system-ui, sans-serif;
+    margin: 3rem auto;
+    max-width: 34rem;
+    padding: 0 1rem;
+}
+
+h1 {
+    color: var(--title);
+    font-size: 1.3rem;
+}
+
+form {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+}
+
+/* The webview draws these itself; `color-scheme` is what keeps them dark. */
+input,
+button {
+    background: none;
+    border: 1px solid var(--rule);
+    color: var(--ink);
+    padding: 0.4rem;
+
+    &:hover {
+        border-color: var(--dim);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--focus);
+        outline-offset: 1px;
+    }
+}
+
+input {
+    flex: 1;
+}
+
+button {
+    cursor: pointer;
+    padding-inline: 0.8rem;
+}
+
+/* The list. Upstream sets this with `style=` attributes on the `<ul>` and each
+   `<li>`; the declarations are the same ones, moved into a file because a
+   policy that allows `style-src 'self'` still forbids an inline attribute. */
+.todos {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375em;
+    list-style: none;
+    padding: 0;
+}
+
+.todo {
+    align-items: center;
+    display: flex;
+    gap: 0.5em;
+}
+
+/* Each control in a row is its own form, and a form with a box of its own
+   would break the row. `display: contents` puts the buttons back in it. */
+.todo form {
+    display: contents;
+}
+
+/* The toggle is a submit button, because an inline `onchange` needs
+   `script-src 'unsafe-inline'` and this page sends a policy without it. The
+   tick is drawn from `aria-checked`, so the state has exactly one home. */
+.toggle {
+    border-radius: 3px;
+    display: grid;
+    height: 1.1em;
+    padding: 0;
+    place-content: center;
+    width: 1.1em;
+
+    &[aria-checked="true"]::after {
+        border: 2px solid var(--title);
+        border-right: 0;
+        border-top: 0;
+        content: "";
+        height: 0.3em;
+        transform: rotate(-45deg) translate(1px, -1px);
+        width: 0.55em;
+    }
+}
+
+.delete {
+    border-color: transparent;
+    color: var(--dim);
+    font-size: 0.85em;
+
+    &:hover {
+        border-color: var(--rule);
+        color: var(--ink);
+    }
+}
+
+.note {
+    color: var(--dim);
+    font-size: 0.85em;
+    margin-top: 2rem;
+}

@@ -1,0 +1,37 @@
+[package]
+name = "example-todos"
+description = "A topcoat application over toasty, served to a Tauri window with no port"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+tauri.workspace = true
+tauri-plugin-topcoat = { workspace = true, features = ["tracing"] }
+toasty = { workspace = true, features = ["sqlite"] }
+toasty-driver-sqlite.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# No `serve`, so nothing binds a port. No `session` either - that is
+# `examples/session`, whose whole subject is the token this transport cannot
+# carry on a cookie.
+topcoat = { workspace = true, features = ["discover", "router", "view"] }
+
+[dev-dependencies]
+example-harness.workspace = true
+scraper.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["macros", "rt"] }
+
+[lints]
+workspace = true

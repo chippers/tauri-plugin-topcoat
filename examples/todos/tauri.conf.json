@@ -1,0 +1,22 @@
+{
+  "productName": "topcoat-todos",
+  "version": "0.0.0",
+  "identifier": "sh.chip.topcoat.todos",
+  "build": {
+    "frontendDist": "dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "toasty todos",
+        "url": "topcoat://localhost/",
+        "width": 720,
+        "height": 640,
+        "create": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}
