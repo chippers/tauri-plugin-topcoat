@@ -1,0 +1,21 @@
+{
+  "productName": "topcoat-probe",
+  "version": "0.0.0",
+  "identifier": "sh.chip.topcoat.probe",
+  "build": {
+    "frontendDist": "ui/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "topcoat custom-protocol probe",
+        "url": "probe://localhost/",
+        "width": 1200,
+        "height": 800
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

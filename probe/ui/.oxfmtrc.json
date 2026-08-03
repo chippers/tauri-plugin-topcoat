@@ -1,0 +1,6 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+
+  // specta's output, and vite's output; we care about neither
+  "ignorePatterns": ["src/bindings.ts", "dist/"]
+}

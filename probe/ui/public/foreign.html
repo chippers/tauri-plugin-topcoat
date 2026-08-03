@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>foreign document</title>
+  </head>
+  <body>
+    <!-- Not served to the webview: probe.ts fetches this, substitutes
+         __ORIGIN__ and hands it to an iframe as a data: URL, which puts the
+         document on an opaque origin. -->
+
+    <!-- An image is a cross-origin GET no webview blocks, so this arriving is
+         what separates "the POST below was refused" from "this document never
+         ran at all". -->
+    <img src="__ORIGIN__/foreign/loaded" alt="" width="1" height="1" />
+
+    <!-- `no-cors` with a text/plain body keeps this a simple request, so there
+         is no preflight to be blocked at. -->
+    <script>
+      fetch("__ORIGIN__/foreign", {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain" },
+        body: "a forged request",
+      }).catch(function () {});
+    </script>
+  </body>
+</html>

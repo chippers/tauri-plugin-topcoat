@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Tauri custom-protocol probe</title>
+  </head>
+  <body>
+    <header>
+      <h1>topcoat &middot; custom-protocol probe</h1>
+      <p id="status" class="running">running...</p>
+    </header>
+
+    <!-- The transport, measuring itself. The clock is not a local timer: every
+         digit in it was rendered on the server and fetched over the custom
+         scheme one animation frame ago. -->
+    <section class="pane">
+      <h2>transport</h2>
+      <div class="gauges">
+        <output id="clock"></output>
+        <table id="stats"></table>
+      </div>
+      <table id="breakdown"></table>
+    </section>
+
+    <section class="pane">
+      <h2>report <span id="tally"></span><span id="news"></span></h2>
+      <table id="report">
+        <thead>
+          <tr>
+            <th>probe</th>
+            <th>result</th>
+            <th>expected</th>
+            <th>detail</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </section>
+
+    <!-- A real form post, aimed at an iframe so submitting it does not take
+         the page away. Only the server can see whether the body arrived. -->
+    <form id="form" method="post" action="/form" target="sink" hidden>
+      <input type="hidden" name="probe" value="a real form post" />
+    </form>
+    <iframe name="sink" title="form target" hidden></iframe>
+
+    <!-- Where the redirect, CSP, IPC and cross-origin documents are loaded. -->
+    <div id="frames" hidden></div>
+
+    <script type="module" src="/src/probe.ts"></script>
+  </body>
+</html>

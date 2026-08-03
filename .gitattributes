@@ -1,0 +1,4 @@
+# LF whatever the platform checks out. The page's formatter and the probe's
+# bindings test both compare file contents against what they generate, and a
+# CRLF working tree fails both.
+* text=auto eol=lf

@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>csp probe</title>
+  </head>
+  <body>
+    <!-- Served with a policy forbidding inline script. The image proves the
+         document rendered at all; the script running proves the policy was
+         not enforced. -->
+    <img src="/csp/rendered" alt="" width="1" height="1" />
+    <script>
+      fetch("/csp/script");
+    </script>
+    <p>csp probe</p>
+  </body>
+</html>

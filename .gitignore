@@ -1,5 +1,14 @@
 # rust
 /target/
 
+# node
+node_modules/
+
+# tauri
+gen/
+
+# the probe's frontend build
+/probe/ui/dist/
+
 # misc
 out/
