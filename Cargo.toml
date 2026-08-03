@@ -16,8 +16,11 @@ rust-version = "1.95"
 
 [workspace.dependencies]
 flate2 = "1"
+scraper = "0.24"
 serde = "1"
+serde_derive = "1"
 serde_json = "1"
+tempfile = "3"
 thiserror = "2"
 url = "2"
 
@@ -37,13 +40,14 @@ tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 bytes = "1"
 tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt"] }
+toasty = { version = "0.9", default-features = false }
+toasty-driver-sqlite = "0.9"
 tokio = { version = "1" }
 topcoat = { version = "0.5", default-features = false }
 tower = "0.5"
 tower-http = "0.7"
 tower-layer = "0.3"
 tower-service = "0.3"
-
 
 # workspace
 tauri-plugin-topcoat = { path = "crates/tauri-plugin-topcoat" }
