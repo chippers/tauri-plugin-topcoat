@@ -1,3 +1,4 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![forbid(unsafe_code)]
 
 //! HTTP semantics for a webview custom protocol.
@@ -14,7 +15,7 @@
 //! operating system. No specification is written for a custom protocol
 //! handler, so the rules start from what the `probe` binary measured and aim at
 //! the layer where a standard already holds: a canonical origin an ordinary
-//! CSRF check can read.
+//! CSRF check can read, redirect following taken from `tower-http`.
 //!
 //! # The two decisions
 //!
@@ -27,6 +28,13 @@
 //! handler cannot deliver - streaming, compression, cookies, upgrades - so the
 //! shell can fail where a developer will see it rather than drop half a response
 //! in silence.
+//!
+//! # Applying them
+//!
+//! [`tower`] stacks both as middleware in front of any service, which is how a
+//! shell actually wants them, and adds the third job from the ecosystem rather
+//! than from here: no webview follows a `Location` from a custom protocol, and
+//! `tower-http` already knows how to follow one.
 //!
 //! # What it does not do
 //!
@@ -55,6 +63,8 @@
 //! [origin]: https://url.spec.whatwg.org/#concept-url-origin
 
 mod origin;
+#[cfg(feature = "tower")]
+pub mod tower;
 mod unsupported;
 
 pub use origin::{CanonicalRequest, Denial, Origin, OriginError, Origins, Outcome, Platform};
@@ -66,4 +76,13 @@ const _: () = {
     assert_send_sync::<Origin>();
     assert_send_sync::<Denial>();
     assert_send_sync::<Unsupported>();
+
+    // A layer is built once and shared, so the same promise holds for it. The
+    // failure this catches is remote: a non-`Send` field added here surfaces as
+    // an unsatisfied bound wherever somebody spawns the stack.
+    #[cfg(feature = "tower")]
+    {
+        assert_send_sync::<tower::CanonicalOriginLayer>();
+        assert_send_sync::<tower::RefuseUnsupportedLayer>();
+    }
 };

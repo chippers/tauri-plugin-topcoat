@@ -1,6 +1,6 @@
 [package]
 name = "custom-protocol-http"
-description = "HTTP semantics for a webview custom protocol: one canonical origin, and what the transport cannot carry"
+description = "HTTP semantics for a webview custom protocol: one canonical origin, which redirects to follow, and what the transport cannot carry"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,9 +9,23 @@ repository.workspace = true
 authors.workspace = true
 publish = false
 
+[features]
+default = ["tower"]
+tower = ["dep:tower-layer", "dep:tower-service", "dep:tower-http"]
+
 [dependencies]
 http.workspace = true
 mime.workspace = true
+tower-http = { workspace = true, optional = true, features = ["follow-redirect"] }
+tower-layer = { workspace = true, optional = true }
+tower-service = { workspace = true, optional = true }
+
+[dev-dependencies]
+bytes.workspace = true
+http-body-util.workspace = true
+tokio = { workspace = true, features = ["macros", "rt"] }
+tower = { workspace = true, features = ["util"] }
+tower-http = { workspace = true, features = ["csrf"] }
 
 [lints.rust]
 unsafe_code = "forbid"
