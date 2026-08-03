@@ -1,0 +1,18 @@
+[package]
+name = "example-harness"
+description = "Requests in the shape a webview delivers them, shared by the examples' tests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+http.workspace = true
+mime.workspace = true
+tauri-plugin-topcoat.workspace = true
+
+[lints]
+workspace = true

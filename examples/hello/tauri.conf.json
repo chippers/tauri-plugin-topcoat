@@ -1,0 +1,21 @@
+{
+  "productName": "topcoat-hello",
+  "version": "0.0.0",
+  "identifier": "sh.chip.topcoat.hello",
+  "build": {
+    "frontendDist": "dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "topcoat hello",
+        "url": "topcoat://localhost/",
+        "width": 480,
+        "height": 320
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

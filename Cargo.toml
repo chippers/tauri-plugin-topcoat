@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "probe", "xtask"]
+members = ["crates/*", "examples/*", "probe", "xtask"]
 
 
 [workspace.package]
@@ -45,6 +45,7 @@ tower-service = "0.3"
 
 # workspace
 tauri-plugin-topcoat = { path = "crates/tauri-plugin-topcoat" }
+example-harness = { path = "crates/example-harness" }
 custom-protocol-http = { path = "crates/custom-protocol-http" }
 
 

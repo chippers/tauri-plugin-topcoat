@@ -1,0 +1,27 @@
+[package]
+name = "example-hello"
+description = "The smallest topcoat application a Tauri window can show"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+tauri.workspace = true
+tauri-plugin-topcoat.workspace = true
+
+# No `serve`, so nothing binds a port.
+topcoat = { workspace = true, features = ["discover", "router", "view"] }
+
+[dev-dependencies]
+example-harness.workspace = true
+tokio = { workspace = true, features = ["macros", "rt"] }
+
+[lints]
+workspace = true

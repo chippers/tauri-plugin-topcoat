@@ -888,6 +888,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "example-harness"
+version = "0.1.0"
+dependencies = [
+ "http",
+ "mime",
+ "tauri-plugin-topcoat",
+]
+
+[[package]]
+name = "example-hello"
+version = "0.1.0"
+dependencies = [
+ "example-harness",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-topcoat",
+ "tokio",
+ "topcoat",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1705,6 +1726,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "879f10e63c20629ecabbb64a8010319738c66a5cd0c29b02d63d272b03751d01"
 dependencies = [
  "generic-array",
+]
+
+[[package]]
+name = "inventory"
+version = "0.3.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4f0c30c76f2f4ccee3fe55a2435f691ca00c0e4bd87abe4f4a851b1d4dac39b"
+dependencies = [
+ "rustversion",
 ]
 
 [[package]]
@@ -3906,6 +3936,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "589daca3621386280f58fde033d08ff378592f6ac448bea327418ccf2725bc83"
 dependencies = [
+ "inventory",
  "serde",
  "serde_urlencoded",
  "topcoat-asset",
@@ -3917,6 +3948,7 @@ dependencies = [
  "topcoat-router",
  "topcoat-router-macro",
  "topcoat-runtime",
+ "topcoat-runtime-macro",
  "topcoat-session",
  "topcoat-view",
  "topcoat-view-macro",
@@ -4000,6 +4032,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0315d8be7320e76c99186bb9e9c33c279daf029b236e0c931fb9623604c707be"
 dependencies = [
  "heck 0.5.0",
+ "inventory",
  "serde",
  "serde_json",
  "topcoat-asset",
@@ -4052,6 +4085,7 @@ dependencies = [
  "http",
  "http-body",
  "http-body-util",
+ "inventory",
  "matchit",
  "percent-encoding",
  "ref-cast",
@@ -4093,6 +4127,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7330c6b7ff6e1c18641caa0bb384a983cbe1f4f612acbd4db5ac0383fb3be340"
 dependencies = [
+ "inventory",
  "ref-cast",
  "serde",
  "serde_json",
@@ -4101,6 +4136,33 @@ dependencies = [
  "topcoat-router",
  "topcoat-view",
  "uuid",
+]
+
+[[package]]
+name = "topcoat-runtime-grammar"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2963a9fe67e61a313ade242490c39c7bb17dfddc94e01a3025c024b76d254e56"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.119",
+ "topcoat-core-grammar",
+ "topcoat-runtime",
+ "uuid",
+]
+
+[[package]]
+name = "topcoat-runtime-macro"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40218f9ac81339faabb7522e538bb2038f78e44043e272eec02091130020b86d"
+dependencies = [
+ "quote",
+ "syn 2.0.119",
+ "topcoat-runtime-grammar",
 ]
 
 [[package]]
