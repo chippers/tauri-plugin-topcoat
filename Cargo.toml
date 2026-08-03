@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["probe", "xtask"]
+members = ["crates/*", "probe", "xtask"]
 
 
 [workspace.package]
@@ -22,6 +22,7 @@ url = "2"
 
 # hyper
 http = "1"
+mime = "0.3"
 
 # tauri + specta (keep in lockstep during rc)
 tauri = "2.11"
@@ -29,6 +30,10 @@ tauri-build = "2"
 specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 specta-typescript = "=0.0.12"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
+
+
+# workspace
+custom-protocol-http = { path = "crates/custom-protocol-http" }
 
 
 [workspace.lints.rust]

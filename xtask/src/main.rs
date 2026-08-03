@@ -63,7 +63,10 @@ fn main() -> ExitCode {
 
 /// Everything that can be answered without running the code.
 ///
-/// Cheapest first, so a failure arrives as early as it can.
+/// Cheapest first, so a failure arrives as early as it can. CI runs this on
+/// every platform in the matrix rather than one, because clippy only ever sees
+/// the `cfg` branches live on the host it ran on - and the branches that differ
+/// per platform are what this workspace is about.
 fn lint() -> bool {
     cargo(&["fmt", "--all", "--check"])
         && lint_with(&["--workspace", "--all-targets"])
@@ -82,6 +85,8 @@ fn lint() -> bool {
 fn test() -> bool {
     cargo(&["test", "--workspace", "--all-targets"])
         && cargo(&["test", "--workspace", "--all-targets", "--all-features"])
+        // `--all-targets` skips doctests, and the usage examples are doctests.
+        && cargo(&["test", "--workspace", "--doc", "--all-features"])
         && pnpm(UI, &["run", "typecheck"])
 }
 
