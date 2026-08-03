@@ -34,6 +34,27 @@ const FEATURES: &[&[&str]] = &[
     &["-p", "tauri-plugin-topcoat", "--features", "tracing"],
 ];
 
+/// The two libraries somebody outside this repository would build on.
+///
+/// Not everything under `crates/`: `example-harness` is test scaffolding for
+/// the examples, and the rest of the workspace is binaries with private items.
+/// Neither has anything rustdoc could say beyond the source.
+const DOCUMENTED: &[&str] = &["-p", "custom-protocol-http", "-p", "tauri-plugin-topcoat"];
+
+/// What rustdoc gets beyond `cargo doc`'s own flags.
+const RUSTDOCFLAGS: &[&str] = &[
+    "-Z",
+    "unstable-options",
+    "--enable-index-page",
+    "--generate-link-to-definition",
+    "--extern-html-root-takes-precedence",
+    "--default-setting",
+    "preferred-dark-theme=ayu",
+    // enables the `doc_cfg` gate, making feature badges
+    "--cfg",
+    "docsrs",
+];
+
 fn help() {
     eprintln!(
         "cargo xtask <task>
@@ -49,6 +70,7 @@ fn help() {
   lint       fmt, the page's own two, clippy over every feature, and the docs
   test       the suites, the doctests, then the page against its bindings
   check      lint then test, which between them are what CI runs
+  docs       the libraries' documentation as docs.rs would build it (--open)
   hooks      run check before every commit, too (once per clone)"
     );
 }
@@ -77,6 +99,8 @@ fn main() -> ExitCode {
         "test" => test(),
         "check" => lint() && test(),
         "hooks" => hooks(),
+
+        "docs" => docs(&rest),
 
         _ => {
             help();
@@ -125,6 +149,43 @@ fn test() -> bool {
         && pnpm(UI, &["run", "typecheck"])
 }
 
+/// The documentation that gets published.
+///
+/// Neither library reaches crates.io, so this builds what docs.rs would have
+/// and the `docs` workflow serves it from GitHub Pages.
+///
+/// Nightly, for [`RUSTDOCFLAGS`] and for the `-Z rustdoc-map` below.
+///
+/// The gate is still `lint`; nothing here is asked to catch a regression.
+fn docs(rest: &[&str]) -> bool {
+    // The root page lists whatever is in the output directory, and `lint`
+    // documents the whole workspace into it. Left alone, the index would
+    // name xtask.
+    if let Err(error) = std::fs::remove_dir_all("target/doc")
+        && error.kind() != std::io::ErrorKind::NotFound
+    {
+        eprintln!("could not clear target/doc: {error}");
+        return false;
+    }
+
+    // `+nightly` has to lead, so this skips the `cargo` helper.
+    let mut doc = vec!["+nightly", "--locked", "doc", "--no-deps", "--all-features"];
+    doc.extend_from_slice(DOCUMENTED);
+
+    // `--no-deps` would otherwise leave every `http::Request` in a signature
+    // as plain text. Point them at docs.rs, which has them.
+    doc.extend_from_slice(&[
+        "-Z",
+        "rustdoc-map",
+        "--config",
+        r#"doc.extern-map.registries.crates-io="https://docs.rs/""#,
+    ]);
+    doc.extend_from_slice(rest);
+
+    let flags = RUSTDOCFLAGS.join(" ");
+    run("cargo", &doc, None, &[("RUSTDOCFLAGS", flags.as_str())])
+}
+
 /// Runs one example application.
 ///
 /// Release, because these are windows somebody is going to interact with and
@@ -157,7 +218,7 @@ fn probe(rest: &[&str]) -> bool {
 /// The hook itself is one line: `cargo xtask check`, the same gate CI names
 /// and the same one you type, rather than a third copy that can drift.
 fn hooks() -> bool {
-    run("git", &["config", "core.hooksPath", HOOKS], None)
+    run("git", &["config", "core.hooksPath", HOOKS], None, &[])
 }
 
 /// Runs clippy over one selection with a warning counted as a failure.
@@ -179,19 +240,24 @@ fn lint_with(arguments: &[&str]) -> bool {
 fn cargo(arguments: &[&str]) -> bool {
     let mut locked = vec!["--locked"];
     locked.extend_from_slice(arguments);
-    run("cargo", &locked, None)
+    run("cargo", &locked, None, &[])
 }
 
 fn pnpm(cwd: impl AsRef<Path>, arguments: &[&str]) -> bool {
-    run("pnpm", arguments, Some(cwd.as_ref()))
+    run("pnpm", arguments, Some(cwd.as_ref()), &[])
 }
 
-fn run(program: &str, arguments: &[&str], cwd: Option<&Path>) -> bool {
-    eprintln!("$ {program} {}", arguments.join(" "));
+fn run(program: &str, arguments: &[&str], cwd: Option<&Path>, env: &[(&str, &str)]) -> bool {
+    let exported: String = env
+        .iter()
+        .map(|(name, value)| format!("{name}='{value}' "))
+        .collect();
+    eprintln!("$ {exported}{program} {}", arguments.join(" "));
 
     let attempt = |name: &str| {
         let mut command = Command::new(name);
         command.args(arguments);
+        command.envs(env.iter().copied());
         if let Some(dir) = cwd {
             command.current_dir(dir);
         }
