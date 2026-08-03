@@ -10,6 +10,38 @@ use std::process::{Command, ExitCode};
 /// The hooks this repository tracks, which git has to be pointed at.
 const HOOKS: &str = ".githooks";
 
+/// The profile the size run builds under, and the directory it lands in.
+const CRUNCH: &str = "crunch";
+
+/// What the size run adds on top of the profile, all of it nightly.
+///
+/// Rebuilding the standard library is where the remaining bytes are: the one
+/// cargo ships is compiled for speed and carries panic machinery this never
+/// reaches. `optimize_for_size` picks the small codepath inside it.
+const CRUNCH_UNSTABLE: &[&str] = &[
+    "-Z",
+    "build-std=std,panic_abort",
+    "-Z",
+    "build-std-features=optimize_for_size",
+];
+
+/// What rustc gets that the profile cannot say.
+///
+/// `immediate-abort` is a panic strategy nightly understands and stable rejects
+/// outright, so it travels as a flag: a `Cargo.toml` stable cannot parse would
+/// break every other task here. The other two drop panic locations and the
+/// `Debug` formatting these binaries never print.
+const CRUNCH_RUSTFLAGS: &str =
+    "-Zlocation-detail=none -Zfmt-debug=none -Zunstable-options -Cpanic=immediate-abort";
+
+/// Every window this workspace can open, which is what a size run covers.
+const APPLICATIONS: &[&str] = &[
+    "example-hello",
+    "example-session",
+    "example-todos",
+    "topcoat-probe",
+];
+
 /// The probe's page. Its own build script builds it, so nothing here does; this
 /// is only where the type-checker runs from.
 const UI: &str = "probe/ui";
@@ -66,6 +98,7 @@ fn help() {
   session    sessions, with the token held out of the webview
   todos      topcoat's toasty example, persisting to SQLite
   showcase   all three and then the probe, each up until you close it
+  crunch     every application, as small as nightly can make it, with sizes
 
   lint       fmt, the page's own two, clippy over every feature, and the docs
   test       the suites, the doctests, then the page against its bindings
@@ -94,6 +127,7 @@ fn main() -> ExitCode {
         "session" => example("example-session"),
         "todos" => example("example-todos"),
         "showcase" => showcase(),
+        "crunch" => crunch(),
 
         "lint" => lint(),
         "test" => test(),
@@ -192,6 +226,77 @@ fn docs(rest: &[&str]) -> bool {
 /// the debug build of a webview application feels it.
 fn example(package: &str) -> bool {
     cargo(&["run", "--release", "-p", package])
+}
+
+/// Every application, built as small as this workspace knows how.
+///
+/// Nightly, and it needs `rust-src`: `rustup component add rust-src --toolchain
+/// nightly`. Between the profile and [`CRUNCH_UNSTABLE`] this is a cold build
+/// of the standard library under fat LTO, which is minutes. That is the whole
+/// reason `release` does none of it.
+///
+/// Prints the size of each binary, since that is the only reason to run it.
+fn crunch() -> bool {
+    // `-Z build-std` will not rebuild the standard library for an implied
+    // target, so the host has to be named.
+    let Some(host) = host() else {
+        eprintln!("could not read the host triple out of `rustc -vV`");
+        return false;
+    };
+
+    // `+nightly` has to lead, so this skips the `cargo` helper.
+    let mut arguments = vec![
+        "+nightly",
+        "--locked",
+        "build",
+        "--profile",
+        CRUNCH,
+        "--target",
+        &host,
+    ];
+    arguments.extend_from_slice(CRUNCH_UNSTABLE);
+    for application in APPLICATIONS {
+        arguments.extend_from_slice(&["-p", application]);
+    }
+
+    if !run(
+        "cargo",
+        &arguments,
+        None,
+        &[("RUSTFLAGS", CRUNCH_RUSTFLAGS)],
+    ) {
+        return false;
+    }
+
+    for application in APPLICATIONS {
+        let binary = format!("{application}{}", std::env::consts::EXE_SUFFIX);
+        let built = Path::new("target").join(&host).join(CRUNCH).join(binary);
+        match std::fs::metadata(&built) {
+            Ok(file) => eprintln!("{application:<16} {:>6.2} MiB", mib(file.len())),
+            Err(error) => eprintln!("{application:<16} {}: {error}", built.display()),
+        }
+    }
+    true
+}
+
+/// A size in MiB, which is the unit a desktop binary is argued in.
+fn mib(bytes: u64) -> f64 {
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a binary size never reaches 2^53"
+    )]
+    let bytes = bytes as f64;
+    bytes / (1024.0 * 1024.0)
+}
+
+/// The target triple this machine builds for, out of `rustc -vV`.
+fn host() -> Option<String> {
+    let reported = Command::new("rustc").arg("-vV").output().ok()?;
+    let reported = String::from_utf8(reported.stdout).ok()?;
+    reported
+        .lines()
+        .find_map(|line| line.strip_prefix("host: "))
+        .map(str::to_owned)
 }
 
 /// Every window the workspace has, in one sitting.
