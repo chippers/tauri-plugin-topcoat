@@ -1,7 +1,8 @@
 //! The protocol handler: one webview request, one router response.
 //!
-//! Every rule applied here was decided in `custom-protocol-http`. What is left
-//! is the ordering and the awaits.
+//! Every rule applied here was decided in `custom-protocol-http`, except
+//! [`harden`], which is this plugin's own and is a response header rather than
+//! a decision about a request. What is left is the ordering and the awaits.
 
 use std::{
     borrow::Cow,
@@ -17,7 +18,7 @@ use custom_protocol_http::{
     Origins,
     tower::{CanonicalOriginLayer, RefuseUnsupportedLayer, follow_redirects},
 };
-use http::{HeaderValue, Request, Response, StatusCode, header};
+use http::{HeaderMap, HeaderValue, Request, Response, StatusCode, header};
 use http_body_util::{BodyExt, Full};
 use topcoat::router::{Body, Router, to_bytes};
 use tower::{Service, ServiceBuilder, ServiceExt};
@@ -112,14 +113,36 @@ impl Service<Request<ReqBody>> for TopcoatService {
 
 /// Buffers the response for the webview, which has no way to stream one.
 async fn deliver(response: Response<Body>) -> Response<Cow<'static, [u8]>> {
-    let (parts, body) = response.into_parts();
+    let (mut parts, body) = response.into_parts();
     let Ok(bytes) = to_bytes(body, usize::MAX).await else {
         return status_only(
             StatusCode::INTERNAL_SERVER_ERROR,
             "the response body could not be read",
         );
     };
+    harden(&mut parts.headers);
     Response::from_parts(parts, Cow::Owned(bytes.to_vec()))
+}
+
+/// Headers this plugin guarantees on every response it emits.
+///
+/// `Referrer-Policy: same-origin` keeps our URLs on requests to our own origin
+/// and withholds them from everyone else. A desktop application's paths are
+/// nobody else's business.
+///
+/// `X-Content-Type-Options: nosniff` matters because a desktop application
+/// serves bytes it did not write. A webview that sniffs such a response into
+/// HTML runs it as a document on the origin holding the session.
+///
+/// Both are defaults rather than overrides, so an application that states its
+/// own policy keeps it.
+fn harden(headers: &mut HeaderMap) {
+    headers
+        .entry(header::REFERRER_POLICY)
+        .or_insert(HeaderValue::from_static("same-origin"));
+    headers
+        .entry(header::X_CONTENT_TYPE_OPTIONS)
+        .or_insert(HeaderValue::from_static("nosniff"));
 }
 
 /// A request arrived before the plugin finished starting, which should not be
@@ -139,6 +162,7 @@ fn status_only(status: StatusCode, reason: &str) -> Response<Cow<'static, [u8]>>
         header::CONTENT_TYPE,
         HeaderValue::from_static("text/plain; charset=utf-8"),
     );
+    harden(response.headers_mut());
     response
 }
 
@@ -148,7 +172,7 @@ fn status_only(status: StatusCode, reason: &str) -> Response<Cow<'static, [u8]>>
 #[cfg(test)]
 mod tests {
     use custom_protocol_http::Platform;
-    use http::{HeaderMap, HeaderName, Method};
+    use http::{HeaderName, Method};
     use topcoat::{
         context::Cx,
         router::{
@@ -338,9 +362,16 @@ mod tests {
 
     #[tokio::test]
     async fn a_page_is_served() {
-        let (status, body, _) = send(&bridge(), request(Method::GET, "/", &[])).await;
+        let (status, body, headers) = send(&bridge(), request(Method::GET, "/", &[])).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body, "hello");
+        assert_eq!(
+            headers
+                .get(header::REFERRER_POLICY)
+                .and_then(|v| v.to_str().ok()),
+            Some("same-origin"),
+            "our URLs are not withheld from other origins"
+        );
     }
 
     #[tokio::test]
