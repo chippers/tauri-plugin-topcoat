@@ -43,6 +43,8 @@ fn help() {
 
   hello      the least that renders over the protocol
   session    sessions, with the token held out of the webview
+  todos      topcoat's toasty example, persisting to SQLite
+  showcase   all three and then the probe, each up until you close it
 
   lint       fmt, the page's own two, clippy over every feature, and the docs
   test       the suites, the doctests, then the page against its bindings
@@ -68,6 +70,8 @@ fn main() -> ExitCode {
 
         "hello" => example("example-hello"),
         "session" => example("example-session"),
+        "todos" => example("example-todos"),
+        "showcase" => showcase(),
 
         "lint" => lint(),
         "test" => test(),
@@ -127,6 +131,16 @@ fn test() -> bool {
 /// the debug build of a webview application feels it.
 fn example(package: &str) -> bool {
     cargo(&["run", "--release", "-p", package])
+}
+
+/// Every window the workspace has, in one sitting.
+///
+/// Each one blocks until you close it, and closing it is the only way on. The
+/// probe is last and gets no `--exit`, so the run ends with its table up.
+fn showcase() -> bool {
+    eprintln!("four windows, in order. close each to move on; the probe is last and stays up.");
+
+    example("example-hello") && example("example-session") && example("example-todos") && probe(&[])
 }
 
 /// Runs the conformance probe with whatever followed the task name.
