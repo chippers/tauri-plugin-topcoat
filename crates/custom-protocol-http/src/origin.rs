@@ -293,6 +293,7 @@ impl Origins {
         let Ok(rewritten) = self.canonical.join(path_and_query) else {
             return Outcome::Deny(Denial::MalformedUri);
         };
+        crate::trace::rewrote_origin(&self.platform, rewritten.path());
         *request.uri_mut() = rewritten;
 
         self.rewrite_headers(request.headers_mut());

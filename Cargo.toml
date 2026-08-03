@@ -35,6 +35,8 @@ tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 
 # tokio
 bytes = "1"
+tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt"] }
 tokio = { version = "1" }
 topcoat = { version = "0.5", default-features = false }
 tower = "0.5"

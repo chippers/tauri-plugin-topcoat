@@ -171,7 +171,10 @@ where
                 let future = self.inner.call(request.into_inner());
                 Box::pin(future)
             }
-            Outcome::Deny(denial) => Box::pin(async move { Ok(refused(&denial)) }),
+            Outcome::Deny(denial) => {
+                crate::trace::refused_foreign_origin(&denial);
+                Box::pin(async move { Ok(refused(&denial)) })
+            }
         }
     }
 }
@@ -221,7 +224,10 @@ where
         Box::pin(async move {
             let response = future.await?;
             match unsupported(&response) {
-                Some(unsupported) => Ok(unsupported_response(&unsupported)),
+                Some(unsupported) => {
+                    crate::trace::refused_unsupported(&unsupported);
+                    Ok(unsupported_response(&unsupported))
+                }
                 None => Ok(response),
             }
         })
@@ -416,6 +422,68 @@ mod tests {
             seen.lock().expect("not poisoned").len(),
             1,
             "the redirect was followed past the cookie"
+        );
+    }
+
+    /// Collects everything a subscriber is told, so a test can read it back.
+    #[cfg(feature = "tracing")]
+    #[derive(Clone, Default)]
+    struct Captured(Arc<Mutex<Vec<u8>>>);
+
+    #[cfg(feature = "tracing")]
+    impl Captured {
+        fn text(&self) -> String {
+            String::from_utf8_lossy(&self.0.lock().expect("not poisoned")).into_owned()
+        }
+    }
+
+    #[cfg(feature = "tracing")]
+    impl std::io::Write for Captured {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().expect("not poisoned").extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[cfg(feature = "tracing")]
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Captured {
+        type Writer = Captured;
+
+        fn make_writer(&'a self) -> Captured {
+            self.clone()
+        }
+    }
+
+    #[cfg(feature = "tracing")]
+    #[tokio::test]
+    async fn a_refusal_says_why_where_a_subscriber_can_hear_it() {
+        let captured = Captured::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(captured.clone())
+            .with_max_level(tracing::Level::DEBUG)
+            .without_time()
+            .finish();
+
+        tracing::subscriber::with_default(subscriber, || {
+            let outcome = origins().accept(request(Method::GET, "https://evil.example/"));
+            let Outcome::Deny(denial) = outcome else {
+                panic!("a foreign authority is always denied");
+            };
+            crate::trace::refused_foreign_origin(&denial);
+        });
+
+        let text = captured.text();
+        assert!(
+            text.contains("evil.example"),
+            "the refusal did not name the origin it refused: {text}"
+        );
+        assert!(
+            text.contains("WARN"),
+            "a request meant for somebody else is not a debug detail: {text}"
         );
     }
 

@@ -45,6 +45,14 @@
 //! to the shell, per webview, or to nobody. `Host` is the exception, and is set
 //! because a server comparing `Origin` against it needs both.
 //!
+//! # Tracing
+//!
+//! Off by default. With the feature every refusal says why. Without it, a
+//! refusal becomes a response and the reason is gone. The origin rewrite is
+//! reported at debug, since the platform origin is the one thing invisible
+//! from inside the application. Only decisions are reported, never a body, a
+//! header value or a query string.
+//!
 //! # Why `Sec-Fetch-Site` is never there
 //!
 //! Not a webview defect, and not something a later version fixes. Fetch
@@ -65,6 +73,7 @@
 mod origin;
 #[cfg(feature = "tower")]
 pub mod tower;
+mod trace;
 mod unsupported;
 
 pub use origin::{CanonicalRequest, Denial, Origin, OriginError, Origins, Outcome, Platform};
