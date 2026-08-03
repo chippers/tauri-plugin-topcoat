@@ -1,0 +1,21 @@
+{
+  "productName": "topcoat-session",
+  "version": "0.0.0",
+  "identifier": "sh.chip.topcoat.session",
+  "build": {
+    "frontendDist": "dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "topcoat sessions",
+        "url": "topcoat://localhost/",
+        "width": 560,
+        "height": 400
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}
