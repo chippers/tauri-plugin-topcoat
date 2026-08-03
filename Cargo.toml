@@ -73,15 +73,21 @@ await_holding_lock = "deny"
 all = { level = "deny", priority = -1 }
 
 
-# client Applications
+# reasonably fast default release profile
 [profile.release]
-opt-level = "z"
-incremental = false
+panic = "abort"
+strip = "debuginfo"
+
+
+# a way to turn up the heat for the release optimizations
+[profile.crunch]
+inherits = "release"
 codegen-units = 1
 lto = true
-panic = "abort"
 strip = true
 
+# measurably smaller than s, see #10
+opt-level = "z"
 
 # fast, separate xtask profile
 [profile.xtask]
