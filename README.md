@@ -180,6 +180,12 @@ so `check` runs before every commit too - once per clone, since nothing can
 track `.git/hooks` for you. `cargo xtask showcase` opens all three examples and
 then the probe, one at a time, each up until you close it.
 
+`release` stays near cargo's defaults, because the first thing anyone does here
+is clone and run `showcase` once, and fat LTO turns that into a coffee break.
+The size knobs live in `crunch`. `cargo xtask crunch` builds every application
+under it and prints the sizes - 1.7 to 3.2 MiB on an aarch64 mac. It wants
+nightly and `rust-src`, since most of what is left is the standard library.
+
 Every example needs nothing but Rust. The todos one additionally compiles SQLite
 from C, because `toasty-driver-sqlite` pins `rusqlite`'s `bundled` feature with
 no way to turn it off - a cold build is 15 to 30 seconds longer, and the
