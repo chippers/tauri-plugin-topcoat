@@ -17,9 +17,13 @@ const UI: &str = "probe/ui";
 /// The feature selections that neither workspace-wide clippy run reaches.
 ///
 /// Those two runs are all-default and all-features, so between them they never
-/// build a default feature switched off. Which leaves `custom-protocol-http`
-/// never seen without `tower`.
-const FEATURES: &[&[&str]] = &[&["-p", "custom-protocol-http", "--no-default-features"]];
+/// build a default feature switched off, nor an optional one on its own. Which
+/// leaves `custom-protocol-http` never seen without `tower`, and `session`
+/// never seen at all until something asks for it.
+const FEATURES: &[&[&str]] = &[
+    &["-p", "custom-protocol-http", "--no-default-features"],
+    &["-p", "tauri-plugin-topcoat", "--features", "session"],
+];
 
 fn help() {
     eprintln!(

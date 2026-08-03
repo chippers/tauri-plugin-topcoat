@@ -33,13 +33,24 @@ type ReqBody = Full<Bytes>;
 pub(crate) struct Bridge {
     origins: Origins,
     router: Arc<Router>,
+    /// Which webviews are showing one of our documents, and the token each one
+    /// holds. Shared with the token store on the router, which is the other
+    /// half of the same conversation.
+    #[cfg(feature = "session")]
+    webviews: Arc<crate::session::Webviews>,
 }
 
 impl Bridge {
-    pub(crate) fn new(origins: Origins, router: Router) -> Bridge {
+    pub(crate) fn new(
+        origins: Origins,
+        router: Router,
+        #[cfg(feature = "session")] webviews: Arc<crate::session::Webviews>,
+    ) -> Bridge {
         Bridge {
             origins,
             router: Arc::new(router),
+            #[cfg(feature = "session")]
+            webviews,
         }
     }
 
@@ -47,11 +58,23 @@ impl Bridge {
         &self.origins
     }
 
+    /// Records where a webview is navigating, whether or not it is allowed to.
+    pub(crate) fn observe_navigation(&self, label: &str, ours: bool) {
+        #[cfg(feature = "session")]
+        self.webviews.observe(label, ours);
+        #[cfg(not(feature = "session"))]
+        let _ = (label, ours);
+    }
+
     /// Serves one request from the webview.
     ///
     /// The stack is assembled per request rather than held, because the webview
     /// it is serving is part of it. Assembly is a few `Arc` clones.
-    pub(crate) async fn serve(&self, request: Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
+    pub(crate) async fn serve(
+        &self,
+        label: &str,
+        request: Request<Vec<u8>>,
+    ) -> Response<Cow<'static, [u8]>> {
         let (parts, body) = request.into_parts();
         let request = Request::from_parts(parts, Full::new(Bytes::from(body)));
 
@@ -63,7 +86,12 @@ impl Bridge {
             .layer(RefuseUnsupportedLayer::new())
             .service(TopcoatService {
                 router: Arc::clone(&self.router),
+                #[cfg(feature = "session")]
+                label: label.to_owned(),
             });
+
+        #[cfg(not(feature = "session"))]
+        let _ = label;
 
         match service.oneshot(request).await {
             Ok(response) => deliver(response).await,
@@ -81,9 +109,21 @@ impl Bridge {
 /// The adapter is the whole of what ties this plugin to topcoat: everything
 /// above it in the stack would work the same over an axum router or a
 /// `ServeDir`.
+///
+/// It is also where the requesting webview is named, rather than on the request
+/// the shell handed in. Naming it here means every hop is named, including the
+/// ones a Post/Redirect/Get produces, without depending on what the redirect
+/// follower above does with `http::Extensions` - which has already changed
+/// once, when `tower-http` 0.7 began forwarding them where 0.6 dropped them.
+/// [`follow_redirects`] pins that to dropping, so the two halves cannot drift
+/// into naming a hop twice or not at all.
 #[derive(Clone)]
 struct TopcoatService {
     router: Arc<Router>,
+    /// Only the name travels: reading the token is the store's job, on the
+    /// other side of the router, and it looks this up for itself.
+    #[cfg(feature = "session")]
+    label: String,
 }
 
 impl Service<Request<ReqBody>> for TopcoatService {
@@ -97,6 +137,8 @@ impl Service<Request<ReqBody>> for TopcoatService {
 
     fn call(&mut self, request: Request<ReqBody>) -> Self::Future {
         let router = Arc::clone(&self.router);
+        #[cfg(feature = "session")]
+        let label = self.label.clone();
 
         Box::pin(async move {
             let (parts, body) = request.into_parts();
@@ -106,6 +148,8 @@ impl Service<Request<ReqBody>> for TopcoatService {
                 .map(http_body_util::Collected::to_bytes)
                 .unwrap_or_default();
             let request = Request::from_parts(parts, Body::from(bytes.to_vec()));
+            #[cfg(feature = "session")]
+            let request = crate::session::attach(request, &label);
             Ok(router.handle(request).await)
         })
     }
@@ -168,7 +212,8 @@ fn status_only(status: StatusCode, reason: &str) -> Response<Cow<'static, [u8]>>
 
 /// End-to-end tests: a real topcoat [`Router`] driven through [`Bridge::serve`].
 ///
-/// The handlers are plain `fn` pointers because `Route` cannot capture state.
+/// The handlers are plain `fn` pointers because `Route` cannot capture state,
+/// which is also why the one piece of shared observation is a static.
 #[cfg(test)]
 mod tests {
     use custom_protocol_http::Platform;
@@ -330,7 +375,12 @@ mod tests {
             .build();
         let origins =
             Origins::new("topcoat", Platform::Scheme).expect("`topcoat` is a valid scheme");
-        Bridge::new(origins, router)
+        Bridge::new(
+            origins,
+            router,
+            #[cfg(feature = "session")]
+            Arc::new(crate::session::Webviews::new()),
+        )
     }
 
     fn path(literal: &'static str) -> Cow<'static, Path> {
@@ -350,8 +400,13 @@ mod tests {
     /// The shape WKWebView gives a `fetch` POST: a `Referer` and nothing else.
     const WEBKIT_POST: &[(HeaderName, &str)] = &[(header::REFERER, "topcoat://localhost/")];
 
+    /// A label no test records a navigation for. The router here has no session
+    /// configured, so nothing looks one up and every test holds either way;
+    /// what a label decides once a session exists is asserted in the crate root.
+    const UNSEEN: &str = "never-navigated";
+
     async fn send(bridge: &Bridge, request: Request<Vec<u8>>) -> (StatusCode, String, HeaderMap) {
-        let response = bridge.serve(request).await;
+        let response = bridge.serve(UNSEEN, request).await;
         let (parts, body) = response.into_parts();
         (
             parts.status,

@@ -1,3 +1,4 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![forbid(unsafe_code)]
 
 //! Serve a topcoat application to a Tauri webview over a custom protocol.
@@ -48,6 +49,12 @@
 //! Everything else - pages, shards, procedures, forms, assets - goes through
 //! untouched.
 //!
+//! # Sessions
+//!
+//! topcoat puts its session token in a cookie, and WebKit throws away every
+//! cookie a custom protocol sets. The `session` feature fixes that in topcoat's
+//! own `TokenStore` seam. See [`Builder::sessions`].
+//!
 //! # Tauri commands
 //!
 //! They keep working, with nothing to configure: `invoke` needs the injected
@@ -56,8 +63,13 @@
 //! must allow `connect-src ipc: http://ipc.localhost` itself.
 
 mod protocol;
+#[cfg(feature = "session")]
+mod session;
 
-use std::{borrow::Cow, sync::Arc, sync::OnceLock};
+use std::{
+    borrow::Cow,
+    sync::{Arc, OnceLock},
+};
 
 use custom_protocol_http::Origins;
 use protocol::Bridge;
@@ -112,6 +124,11 @@ pub struct Builder {
     /// configuration, so the two cannot disagree.
     https_scheme: Option<bool>,
     allow_external_navigation: bool,
+    /// Shared with the token store the moment [`Builder::sessions`] installs
+    /// one, which is why it is made here rather than with the bridge: the store
+    /// goes onto the router long before the bridge exists.
+    #[cfg(feature = "session")]
+    webviews: Arc<session::Webviews>,
 }
 
 impl core::fmt::Debug for Builder {
@@ -135,7 +152,72 @@ impl Builder {
             scheme: DEFAULT_SCHEME.to_owned(),
             https_scheme: None,
             allow_external_navigation: false,
+            #[cfg(feature = "session")]
+            webviews: Arc::new(session::Webviews::new()),
         }
+    }
+
+    /// Installs topcoat sessions, carrying the token in this process.
+    ///
+    /// ```no_run
+    /// # use topcoat::{router::Router, session::SessionConfig};
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let plugin = tauri_plugin_topcoat::Builder::new(Router::builder())
+    ///     .sessions(SessionConfig::builder())
+    ///     .build()?;
+    /// # let _: tauri::plugin::TauriPlugin<tauri::Wry> = plugin;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Why you need this
+    ///
+    /// topcoat's session token rides a hardened cookie by default, and WebKit
+    /// throws away every cookie a custom protocol sets. Your login would look
+    /// like it worked and the next request would arrive anonymous. This swaps
+    /// the transport and nothing else - minting, hashing, expiry, `start` and
+    /// `stop` and `rotate`, and your own session storage all stay topcoat's.
+    ///
+    /// The token is held here, keyed by the webview that asked, and never
+    /// crosses into the webview at all. Not `document.cookie`, not a header a
+    /// script can read, not anything WebKit writes to disk. A browser has to
+    /// hand a client its token because the server is somewhere else. Here it
+    /// is the same process, and Tauri tells you which webview asked.
+    ///
+    /// # What it costs
+    ///
+    /// The token is ambient with respect to the webview, so whatever document
+    /// that webview is showing can use it. Confinement is what defends that, so
+    /// leaving [`allow_external_navigation`](Builder::allow_external_navigation)
+    /// off matters more once sessions are on. A webview seen on somebody else's
+    /// origin stops being handed the token either way.
+    ///
+    /// Confinement governs navigation, not sub-resources: a document of yours
+    /// embedding a foreign frame still shows your origin, so the token is still
+    /// handed out, and what stops that frame spending it is topcoat's origin
+    /// check. Serve a `Content-Security-Policy` if you would rather it could
+    /// not load.
+    ///
+    /// Reach for this rather than topcoat's own
+    /// [`sessions`](topcoat::session::RouterBuilderSessionExt::sessions), which
+    /// keeps whatever token store the configuration carries - the cookie one,
+    /// with topcoat's `cookie` feature on, whose every sign-in answers `502`.
+    ///
+    /// # Panics
+    ///
+    /// Never directly. Call this twice and the second store replaces the first,
+    /// taking the first one's tokens with it.
+    #[cfg(feature = "session")]
+    #[must_use]
+    pub fn sessions(mut self, config: topcoat::session::SessionConfigBuilder) -> Builder {
+        use topcoat::session::RouterBuilderSessionExt;
+
+        // Last, so an application's own token store is not quietly kept.
+        let config = config
+            .token_store(session::WebviewTokenStore::new(Arc::clone(&self.webviews)))
+            .build();
+        self.router = self.router.sessions(config);
+        self
     }
 
     /// Serves the application under a different scheme name.
@@ -196,6 +278,8 @@ impl Builder {
             scheme,
             https_scheme,
             allow_external_navigation,
+            #[cfg(feature = "session")]
+            webviews,
         } = self;
         let confined = !allow_external_navigation;
         let protocol_scheme = scheme.clone();
@@ -203,37 +287,52 @@ impl Builder {
         Ok(tauri::plugin::Builder::new("topcoat")
             .setup(move |app, _api| {
                 let origins = Origins::new(&scheme, platform_for(app, https_scheme))?;
-                let _ = building.set(Bridge::new(origins, router.build()));
+                let _ = building.set(Bridge::new(
+                    origins,
+                    router.build(),
+                    #[cfg(feature = "session")]
+                    Arc::clone(&webviews),
+                ));
                 Ok(())
             })
             .register_asynchronous_uri_scheme_protocol(
                 protocol_scheme,
-                move |_context, request, responder| {
+                move |context, request, responder| {
                     let bridge = Arc::clone(&serving);
+                    let label = context.webview_label().to_owned();
                     tauri::async_runtime::spawn(async move {
                         responder.respond(match bridge.get() {
-                            Some(bridge) => bridge.serve(request).await,
+                            Some(bridge) => bridge.serve(&label, request).await,
                             None => protocol::unavailable(),
                         });
                     });
                 },
             )
-            .on_navigation(move |webview, url| may_navigate(&navigating, webview, url, confined))
+            .on_navigation(move |webview, url| observe(&navigating, webview, url, confined))
             .build())
     }
 
     /// Drives the same application without a window, as `platform` would.
     ///
-    /// Everything configured here applies, so a test exercises the transport
-    /// the application actually runs on. Naming the platform lets a test check
-    /// a request the way Windows delivers it while running on macOS.
+    /// Everything configured here applies, sessions included, so a test
+    /// exercises the transport the application actually runs on. Naming the
+    /// platform lets a test check a request the way Windows delivers it while
+    /// running on macOS.
     ///
     /// # Errors
     ///
     /// The same as [`Builder::build`].
     pub fn session(self, platform: Platform) -> Result<Session, Error> {
         let origins = self.validate(platform)?;
-        Ok(Session(Bridge::new(origins, self.router.build())))
+        let bridge = Bridge::new(
+            origins,
+            self.router.build(),
+            #[cfg(feature = "session")]
+            self.webviews,
+        );
+        // Stands in for a window already showing one of your pages.
+        bridge.observe_navigation(SESSION_LABEL, true);
+        Ok(Session(bridge))
     }
 
     /// Checks what can be checked while the mistake is still attached to the
@@ -288,49 +387,17 @@ impl core::fmt::Debug for Session {
 }
 
 impl Session {
-    /// Serves one request, redirects included.
+    /// Serves one request, redirects and session included.
     pub async fn serve(
         &self,
         request: http::Request<Vec<u8>>,
     ) -> http::Response<Cow<'static, [u8]>> {
-        self.0.serve(request).await
+        self.0.serve(SESSION_LABEL, request).await
     }
 }
 
-/// Decides whether a webview may go where it is going.
-///
-/// Narrow on purpose. Only a webview already showing one of our pages is held
-/// to confinement; every other webview in the application is none of this
-/// plugin's business, and neither is the first navigation into one.
-fn may_navigate<R: Runtime>(
-    bridge: &OnceLock<Bridge>,
-    webview: &Webview<R>,
-    url: &Url,
-    confined: bool,
-) -> bool {
-    let Some(bridge) = bridge.get() else {
-        return true;
-    };
-    let ours = bridge.origins().platform();
-
-    let Ok(current) = webview.url() else {
-        return true;
-    };
-    if !confined || !ours.covers(current.as_str()) {
-        return true;
-    }
-
-    let target_is_ours = ours.covers(url.as_str());
-    if !target_is_ours {
-        // Loud without any feature turned on: a window that silently refuses to
-        // navigate is the one failure where saying nothing misleads.
-        eprintln!(
-            "tauri-plugin-topcoat: blocked navigation to {url} in webview {}",
-            webview.label()
-        );
-    }
-    target_is_ours
-}
+/// The webview label a [`Session`] pretends to be.
+const SESSION_LABEL: &str = "session";
 
 /// The URL shape this build's webview uses, from the application configuration
 /// unless the caller insisted otherwise.
@@ -353,4 +420,43 @@ fn platform_for<R: Runtime>(app: &AppHandle<R>, explicit: Option<bool>) -> Platf
         // No http rewrite for the setting to apply to.
         (platform, _) => platform,
     }
+}
+
+/// Records where a webview is going, and decides whether it may.
+///
+/// The recording happens either way, and happens even when confinement is off,
+/// because a session token is held per webview and must not be handed to one
+/// that has wandered off to somebody else's document.
+///
+/// Confinement itself is narrow. Only a webview already showing one of our
+/// pages is held to it; every other webview in the application is none of this
+/// plugin's business, and neither is the first navigation into one.
+fn observe<R: Runtime>(
+    bridge: &OnceLock<Bridge>,
+    webview: &Webview<R>,
+    url: &Url,
+    confined: bool,
+) -> bool {
+    let Some(bridge) = bridge.get() else {
+        return true;
+    };
+    let ours = bridge.origins().platform();
+    let target_is_ours = ours.covers(url.as_str());
+    bridge.observe_navigation(webview.label(), target_is_ours);
+
+    let Ok(current) = webview.url() else {
+        return true;
+    };
+    if !confined || !ours.covers(current.as_str()) {
+        return true;
+    }
+    if !target_is_ours {
+        // Loud without any feature turned on: a window that silently refuses to
+        // navigate is the one failure where saying nothing misleads.
+        eprintln!(
+            "tauri-plugin-topcoat: blocked navigation to {url} in webview {}",
+            webview.label()
+        );
+    }
+    target_is_ours
 }
