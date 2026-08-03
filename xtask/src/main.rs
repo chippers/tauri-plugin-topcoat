@@ -33,6 +33,7 @@ fn help() {
   probe      run the conformance probe (--exit to quit once it reports)
 
   hello      the least that renders over the protocol
+  session    sessions, with the token held out of the webview
 
   lint       fmt, the page's own two, clippy over every feature, and the docs
   test       the suites, the doctests, then the page against its bindings
@@ -57,6 +58,7 @@ fn main() -> ExitCode {
         "probe" => probe(&rest),
 
         "hello" => example("example-hello"),
+        "session" => example("example-session"),
 
         "lint" => lint(),
         "test" => test(),
