@@ -2,11 +2,13 @@
 
 Serve a [topcoat](https://github.com/tokio-rs/topcoat) application to a Tauri
 webview over a custom protocol. No port is bound, no socket is opened, and the
-request never leaves the process.
+request never leaves the process. **[API documentation](https://chippers.github.io/tauri-plugin-topcoat/)**.
 
-**[API documentation](https://chippers.github.io/tauri-plugin-topcoat/)**,
-rebuilt from `main`. Neither crate is published, so docs.rs will never build
-them.
+![The custom-protocol probe on macOS and on iOS, each reporting what its webview
+did with the same request](.github/assets/probe.png)
+
+Note: Android is currently unsupported due to a webview API limitation. Whatever
+general workaround Tauri lands on for Android will be used here.
 
 topcoat's router is already a function from an HTTP request to an HTTP response.
 `Router::handle` needs none of its `serve` feature, so a Tauri custom protocol
